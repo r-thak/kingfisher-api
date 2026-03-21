@@ -1,0 +1,20 @@
+{
+    "name": "ainl",
+    "image": "mcr.microsoft.com/devcontainers/base:debian",
+    "workspaceFolder": "/workspaces/ainl",
+    "features": {
+        "ghcr.io/devcontainers/features/java:1": {
+            "version": "21",
+            "installGradle": "true",
+            "gradleVersion": "8.10"
+        },
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {
+            "version": "latest",
+            "enableNonRootDocker": "true",
+            "moby": false
+        }
+    },
+    "postCreateCommand": "cd /workspaces/ainl",
+    "postStartCommand": "git config --global --add safe.directory ${containerWorkspaceFolder}",
+    "remoteUser": "vscode"
+}
