@@ -23,7 +23,7 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
 
         String path = request.getRequestURI();
-        if (path.startsWith("/swagger-ui") || path.startsWith("/v3/api-docs") || path.startsWith("/v1/docs") || path.equals("/health")) {
+        if (!path.startsWith("/v1/admin/ingest")) {
             filterChain.doFilter(request, response);
             return;
         }
