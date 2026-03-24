@@ -1,5 +1,7 @@
 package com.illini.grades.service;
 
+import org.springframework.transaction.annotation.Transactional;
+
 import com.illini.grades.dto.*;
 import com.illini.grades.entity.CourseGrade;
 import com.illini.grades.entity.InstructorGrade;
@@ -17,6 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Service
+@Transactional(readOnly = true)
 public class ExploreService {
 
     private final CourseGradeRepository courseGradeRepository;
