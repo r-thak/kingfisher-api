@@ -1,5 +1,7 @@
 package com.illini.grades.service;
 
+import org.springframework.transaction.annotation.Transactional;
+
 import com.illini.grades.dto.*;
 import com.illini.grades.entity.Course;
 import com.illini.grades.entity.CourseOffering;
@@ -22,6 +24,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
+@Transactional(readOnly = true)
 public class CourseService {
 
     private final CourseRepository courseRepository;
