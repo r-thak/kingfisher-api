@@ -12,7 +12,8 @@
             "version": "latest",
             "enableNonRootDocker": "true",
             "moby": false
-        }
+        },
+        "ghcr.io/devcontainers-extra/features/bun:1": {}
     },
     "postCreateCommand": "cd /workspaces/king",
     "postStartCommand": "git config --global --add safe.directory ${containerWorkspaceFolder}",
