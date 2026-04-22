@@ -1,5 +1,5 @@
 server:
-  port: 5902
+  port: 5903
 
 spring:
   datasource:
@@ -35,4 +35,4 @@ springdoc:
 
 app:
   api-key: ${API_KEY:changeme}
-  base-url: ${APP_BASE_URL:http://localhost:5902}
+  base-url: ${APP_BASE_URL:http://localhost:5903}

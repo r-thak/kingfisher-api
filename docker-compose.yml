@@ -28,9 +28,9 @@ services:
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-changeme}
       API_KEY: ${API_KEY:-changeme}
-      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5902}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5903}
     ports:
-      - "5902:5902"
+      - "5903:5903"
     restart: unless-stopped
 
 volumes:

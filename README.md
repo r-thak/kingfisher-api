@@ -24,13 +24,13 @@ gradle bootRun
 Once running, upload a relevant UIUC grades CSV (`uiuc-gpa-dataset.csv`) through the `/v1/admin/ingest` end-point. Supply the API Key located in your `.env`:
 
 ```bash
-curl -X POST http://localhost:5902/v1/admin/ingest \
+curl -X POST http://localhost:5903/v1/admin/ingest \
   -H "Authorization: Bearer your-api-key-here" \
   -F "file=@../uiuc-gpa-dataset.csv"
 ```
 
 ## Docs
-[http://localhost:5902/swagger-ui.html](http://localhost:5902/swagger-ui.html)
+[http://localhost:5903/swagger-ui.html](http://localhost:5903/swagger-ui.html)
 
 TO DO:
 - Automate messages to professors to request copies of past syllabi
