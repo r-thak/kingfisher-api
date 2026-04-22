@@ -9,12 +9,18 @@ services:
       - pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-illini_grades}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   app:
     build: .
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
       DB_HOST: db
       DB_PORT: 5432
@@ -22,8 +28,9 @@ services:
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-changeme}
       API_KEY: ${API_KEY:-changeme}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5902}
     ports:
-      - "8080:8080"
+      - "5902:5902"
     restart: unless-stopped
 
 volumes:

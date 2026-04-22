@@ -1,0 +1,7 @@
+.git
+.gradle
+build
+kingfisher-web
+node_modules
+.DS_Store
+*.csv

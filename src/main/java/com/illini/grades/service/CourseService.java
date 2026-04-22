@@ -86,21 +86,21 @@ public class CourseService {
         return new PagedResponse<>(page, result.getTotalPages(), result.getTotalElements(), dtos);
     }
 
-    private static final Map<String, String> SUBJECT_SYNONYMS = Map.of(
-            "computer science", "CS",
-            "comp sci", "CS",
-            "math", "MATH",
-            "mathematics", "MATH",
-            "stat", "STAT",
-            "statistics", "STAT",
-            "phys", "PHYS",
-            "physics", "PHYS",
-            "econ", "ECON",
-            "economics", "ECON",
-            "bio", "IB",
-            "biology", "IB",
-            "chem", "CHEM",
-            "chemistry", "CHEM"
+    private static final Map<String, String> SUBJECT_SYNONYMS = Map.ofEntries(
+            Map.entry("computer science", "CS"),
+            Map.entry("comp sci", "CS"),
+            Map.entry("math", "MATH"),
+            Map.entry("mathematics", "MATH"),
+            Map.entry("stat", "STAT"),
+            Map.entry("statistics", "STAT"),
+            Map.entry("phys", "PHYS"),
+            Map.entry("physics", "PHYS"),
+            Map.entry("econ", "ECON"),
+            Map.entry("economics", "ECON"),
+            Map.entry("bio", "IB"),
+            Map.entry("biology", "IB"),
+            Map.entry("chem", "CHEM"),
+            Map.entry("chemistry", "CHEM")
     );
 
     private String normalizeQuery(String q) {
