@@ -16,7 +16,7 @@ spring:
           batch_size: 500
         order_inserts: true
         order_updates: true
-    open-in-view: true
+    open-in-view: false
   flyway:
     enabled: true
     baseline-on-migrate: true
