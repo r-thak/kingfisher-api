@@ -1,6 +1,8 @@
 # Kingfisher API
 
 A REST interface for UIUC course data powered by Spring Boot. This README is for setting up your own Kingfisher API and is not designed to help you navigate the website. Inspired by Madgrades.
+[Web UI](https://kf.rthak.com/)
+[Web UI Repo](https://github.com/r-thak/kingfisher-web)
 
 ## Setup
 
