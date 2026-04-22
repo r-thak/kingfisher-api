@@ -1,10 +1,8 @@
 services:
   db:
     image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-illini_grades}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    env_file:
+      - .env
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
@@ -21,16 +19,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    environment:
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_NAME: ${DB_NAME:-illini_grades}
-      DB_USER: ${DB_USER:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-changeme}
-      API_KEY: ${API_KEY:-changeme}
-      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5903}
+    env_file:
+      - .env
     ports:
-      - "5903:5903"
+      - "5902:5902"
     restart: unless-stopped
 
 volumes:
