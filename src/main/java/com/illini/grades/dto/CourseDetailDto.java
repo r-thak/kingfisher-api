@@ -8,5 +8,6 @@ public record CourseDetailDto(
     int number,
     String title,
     String gradesUrl,
-    List<CourseOfferingSummaryDto> courseOfferings
+    List<CourseOfferingSummaryDto> courseOfferings,
+    List<CourseSummaryDto> crosslisted
 ) {}

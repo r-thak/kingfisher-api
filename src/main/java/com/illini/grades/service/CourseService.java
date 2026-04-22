@@ -86,8 +86,34 @@ public class CourseService {
         return new PagedResponse<>(page, result.getTotalPages(), result.getTotalElements(), dtos);
     }
 
+    private static final Map<String, String> SUBJECT_SYNONYMS = Map.of(
+            "computer science", "CS",
+            "comp sci", "CS",
+            "math", "MATH",
+            "mathematics", "MATH",
+            "stat", "STAT",
+            "statistics", "STAT",
+            "phys", "PHYS",
+            "physics", "PHYS",
+            "econ", "ECON",
+            "economics", "ECON",
+            "bio", "IB",
+            "biology", "IB",
+            "chem", "CHEM",
+            "chemistry", "CHEM"
+    );
+
     private String normalizeQuery(String q) {
-        return q.toLowerCase().replaceAll("([a-z])(\\d)", "$1 $2").trim();
+        String normalized = q.toLowerCase().trim();
+        
+        for (Map.Entry<String, String> entry : SUBJECT_SYNONYMS.entrySet()) {
+            if (normalized.startsWith(entry.getKey())) {
+                normalized = normalized.replaceFirst(entry.getKey(), entry.getValue().toLowerCase());
+                break;
+            }
+        }
+        
+        return normalized.replaceAll("([a-z])(\\d)", "$1 $2").trim();
     }
 
     public CourseDetailDto getCourse(Long id) {
@@ -100,13 +126,25 @@ public class CourseService {
                 baseUrl + "/v1/course_offerings/" + co.getId()
         )).toList();
 
+        List<Course> crosslisted = courseRepository.findByTitleAndNumber(course.getTitle(), (short) course.getNumber());
+        List<CourseSummaryDto> crosslistedDtos = crosslisted.stream()
+                .filter(c -> !c.getId().equals(id))
+                .map(c -> new CourseSummaryDto(
+                        c.getId(),
+                        new SubjectSummaryDto(c.getSubject().getId(), c.getSubject().getCode()),
+                        c.getNumber(),
+                        c.getTitle(),
+                        baseUrl + "/v1/courses/" + c.getId()
+                )).toList();
+
         return new CourseDetailDto(
                 id,
                 new SubjectSummaryDto(course.getSubject().getId(), course.getSubject().getCode()),
                 course.getNumber(),
                 course.getTitle(),
                 baseUrl + "/v1/courses/" + id + "/grades",
-                coDtos
+                coDtos,
+                crosslistedDtos
         );
     }
 

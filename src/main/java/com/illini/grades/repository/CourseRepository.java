@@ -8,10 +8,12 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecificationExecutor<Course> {
     Optional<Course> findBySubjectIdAndNumber(Long subjectId, Short number);
+    List<Course> findByTitleAndNumber(String title, Short number);
 
     @Query(value = """
         SELECT c.* FROM courses c
