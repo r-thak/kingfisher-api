@@ -11,12 +11,12 @@ cp .env.example .env
 
 Run with docker compose:
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
 OR run separately (requires Java 21 and Gradle):
 ```bash
-docker compose up -d db 
+docker compose up -d db
 gradle bootRun
 ```
 
