@@ -3,6 +3,14 @@ spring:
     url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
     username: ${DB_USER}
     password: ${DB_PASSWORD}
+  jpa:
+    open-in-view: false
+
+server:
+  error:
+    include-stacktrace: never
+    include-message: always
+
 
 app:
   api-key: ${API_KEY}
