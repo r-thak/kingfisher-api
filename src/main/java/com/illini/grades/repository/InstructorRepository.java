@@ -15,11 +15,23 @@ public interface InstructorRepository extends JpaRepository<Instructor, Long> {
     @Query(value = """
         SELECT i.* FROM instructors i
         WHERE i.name % :query
+           OR LOWER(i.name) LIKE '%' || LOWER(:query) || '%'
+           OR (
+               SELECT bool_and(LOWER(i.name) LIKE '%' || t || '%')
+               FROM unnest(string_to_array(LOWER(:query), ' ')) t
+               WHERE t <> ''
+           )
         ORDER BY similarity(i.name, :query) DESC
         """,
         countQuery = """
         SELECT count(*) FROM instructors i
         WHERE i.name % :query
+           OR LOWER(i.name) LIKE '%' || LOWER(:query) || '%'
+           OR (
+               SELECT bool_and(LOWER(i.name) LIKE '%' || t || '%')
+               FROM unnest(string_to_array(LOWER(:query), ' ')) t
+               WHERE t <> ''
+           )
         """, nativeQuery = true)
     Page<Instructor> searchByQuery(@Param("query") String query, Pageable pageable);
 }
