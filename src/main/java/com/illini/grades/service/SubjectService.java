@@ -4,6 +4,7 @@ import com.illini.grades.dto.CourseSummaryDto;
 import com.illini.grades.dto.SubjectDetailDto;
 import com.illini.grades.dto.SubjectSummaryDto;
 import com.illini.grades.entity.Course;
+import com.illini.grades.entity.CourseGrade;
 import com.illini.grades.entity.Subject;
 import com.illini.grades.exception.ResourceNotFoundException;
 import com.illini.grades.repository.CourseRepository;
@@ -45,6 +46,8 @@ public class SubjectService {
                         new SubjectSummaryDto(subject.getId(), subject.getCode()),
                         c.getNumber(),
                         c.getTitle(),
+                        c.getCourseGrade() != null ? c.getCourseGrade().getGpa() : null,
+                        c.getCourseGrade() != null ? c.getCourseGrade().getTotalStudents() : null,
                         baseUrl + "/v1/courses/" + c.getId()
                 ))
                 .collect(Collectors.toList());

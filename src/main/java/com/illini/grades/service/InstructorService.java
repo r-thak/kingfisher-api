@@ -2,6 +2,7 @@ package com.illini.grades.service;
 
 import com.illini.grades.dto.*;
 import com.illini.grades.entity.Course;
+import com.illini.grades.entity.CourseGrade;
 import com.illini.grades.entity.CourseOffering;
 import com.illini.grades.entity.Instructor;
 import com.illini.grades.entity.Section;
@@ -58,6 +59,8 @@ public class InstructorService {
                         new SubjectSummaryDto(c.getSubject().getId(), c.getSubject().getCode()),
                         c.getNumber(),
                         c.getTitle(),
+                        c.getCourseGrade() != null ? c.getCourseGrade().getGpa() : null,
+                        c.getCourseGrade() != null ? c.getCourseGrade().getTotalStudents() : null,
                         baseUrl + "/v1/courses/" + c.getId()
                 )).toList();
 
@@ -98,7 +101,7 @@ public class InstructorService {
             coDtos.add(new InstructorGradesResponseDto.InstructorCourseOfferingGradeDto(
                     co.getTerm().getId(),
                     co.getTerm().getYearTerm(),
-                    new CourseSummaryDto(course.getId(), new SubjectSummaryDto(course.getSubject().getId(), course.getSubject().getCode()), course.getNumber(), course.getTitle(), baseUrl + "/v1/courses/" + course.getId()),
+                    new CourseSummaryDto(course.getId(), new SubjectSummaryDto(course.getSubject().getId(), course.getSubject().getCode()), course.getNumber(), course.getTitle(), course.getCourseGrade() != null ? course.getCourseGrade().getGpa() : null, course.getCourseGrade() != null ? course.getCourseGrade().getTotalStudents() : null, baseUrl + "/v1/courses/" + course.getId()),
                     co.getId(),
                     coCum,
                     sDtos
