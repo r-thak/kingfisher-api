@@ -61,14 +61,12 @@ public class CourseService {
                 sortBy = "courseGrade.totalStudents";
             } else if ("title".equalsIgnoreCase(sort) || "name".equalsIgnoreCase(sort)) {
                 sortBy = "title";
-            } else if ("number".equalsIgnoreCase(sort)) {
-                sortBy = "number";
+            } else if ("avg_students".equalsIgnoreCase(sort) || "popularity".equalsIgnoreCase(sort)) {
+                sortBy = "courseGrade.avgStudents";
             } else {
-                // We cannot trivially sort by the dynamic popularity in a standard JPA Specification without complex subqueries.
-                // For non-query searches, if they choose popularity, we will fallback to total_students as a proxy,
-                // or just sort by courseGrade.totalStudents. The requirement focuses on search.
                 sortBy = "courseGrade.totalStudents"; 
-                if (sort == null || sort.isBlank() || "popularity".equalsIgnoreCase(sort)) {
+                if (sort == null || sort.isBlank()) {
+                    sortBy = "courseGrade.avgStudents";
                     direction = "asc".equalsIgnoreCase(order) ? Sort.Direction.ASC : Sort.Direction.DESC;
                 }
             }
@@ -89,10 +87,20 @@ public class CourseService {
                     predicates.add(cb.equal(root.get("number"), number));
                 }
                 if (instructorName != null && !instructorName.isBlank()) {
+                    String[] tokens = instructorName.toLowerCase().split("\\s+");
                     var subquery = q.subquery(Long.class);
                     var sRoot = subquery.from(Section.class);
+                    var instructorJoin = sRoot.join("instructor");
+                    
+                    var tokenPredicates = new ArrayList<jakarta.persistence.criteria.Predicate>();
+                    for (String token : tokens) {
+                        if (!token.isBlank()) {
+                            tokenPredicates.add(cb.like(cb.lower(instructorJoin.get("name")), "%" + token + "%"));
+                        }
+                    }
+                    
                     subquery.select(sRoot.get("courseOffering").get("course").get("id"))
-                            .where(cb.like(cb.lower(sRoot.get("instructor").get("name")), "%" + instructorName.toLowerCase() + "%"));
+                            .where(cb.and(tokenPredicates.toArray(new jakarta.persistence.criteria.Predicate[0])));
                     predicates.add(root.get("id").in(subquery));
                 }
                 return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));

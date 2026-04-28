@@ -28,7 +28,7 @@ public class CourseController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "25") int perPage,
             @RequestParam(required = false) String sort,
-            @RequestParam(defaultValue = "asc") String order) {
+            @RequestParam(defaultValue = "desc") String order) {
         return courseService.listCourses(query, subject, instructor, number, page, perPage, sort, order);
     }
 

@@ -42,9 +42,9 @@ public class ExploreService {
 
     private Sort getSort(String sort, String order) {
         Sort.Direction direction = "asc".equalsIgnoreCase(order) ? Sort.Direction.ASC : Sort.Direction.DESC;
-        String sortBy = "totalStudents";
+        String sortBy = "avgStudents";
         if ("gpa".equalsIgnoreCase(sort)) sortBy = "gpa";
-        else if ("avgStudents".equalsIgnoreCase(sort)) sortBy = "avgStudents";
+        else if ("totalStudents".equalsIgnoreCase(sort)) sortBy = "totalStudents";
         return Sort.by(direction, sortBy);
     }
 

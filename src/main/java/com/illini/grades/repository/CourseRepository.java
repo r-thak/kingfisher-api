@@ -21,6 +21,8 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
         WHERE c.title % :query
            OR (s.code || ' ' || c.number::text) % :query
            OR (s.code || c.number::text) % :query
+           OR LOWER(c.title) LIKE '%' || :query || '%'
+           OR LOWER(s.code || ' ' || c.number::text) LIKE '%' || :query || '%'
         ORDER BY (
             SELECT CAST(SUM(sec.students) AS FLOAT) / NULLIF(COUNT(DISTINCT co.term_id), 0)
             FROM course_offerings co
@@ -36,6 +38,8 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
         WHERE c.title % :query
            OR (s.code || ' ' || c.number::text) % :query
            OR (s.code || c.number::text) % :query
+           OR LOWER(c.title) LIKE '%' || :query || '%'
+           OR LOWER(s.code || ' ' || c.number::text) LIKE '%' || :query || '%'
         """, nativeQuery = true)
     Page<Course> searchByQueryOrderByPopularity(@Param("query") String query, Pageable pageable);
 
@@ -46,6 +50,8 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
         WHERE c.title % :query
            OR (s.code || ' ' || c.number::text) % :query
            OR (s.code || c.number::text) % :query
+           OR LOWER(c.title) LIKE '%' || :query || '%'
+           OR LOWER(s.code || ' ' || c.number::text) LIKE '%' || :query || '%'
         ORDER BY cg.total_students DESC NULLS LAST
         """,
         countQuery = """
@@ -54,6 +60,8 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
         WHERE c.title % :query
            OR (s.code || ' ' || c.number::text) % :query
            OR (s.code || c.number::text) % :query
+           OR LOWER(c.title) LIKE '%' || :query || '%'
+           OR LOWER(s.code || ' ' || c.number::text) LIKE '%' || :query || '%'
         """, nativeQuery = true)
     Page<Course> searchByQueryOrderByTotalGrades(@Param("query") String query, Pageable pageable);
 
@@ -64,6 +72,8 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
         WHERE c.title % :query
            OR (s.code || ' ' || c.number::text) % :query
            OR (s.code || c.number::text) % :query
+           OR LOWER(c.title) LIKE '%' || :query || '%'
+           OR LOWER(s.code || ' ' || c.number::text) LIKE '%' || :query || '%'
         ORDER BY cg.gpa DESC NULLS LAST
         """,
         countQuery = """
@@ -72,6 +82,8 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
         WHERE c.title % :query
            OR (s.code || ' ' || c.number::text) % :query
            OR (s.code || c.number::text) % :query
+           OR LOWER(c.title) LIKE '%' || :query || '%'
+           OR LOWER(s.code || ' ' || c.number::text) LIKE '%' || :query || '%'
         """, nativeQuery = true)
     Page<Course> searchByQueryOrderByGpa(@Param("query") String query, Pageable pageable);
 }

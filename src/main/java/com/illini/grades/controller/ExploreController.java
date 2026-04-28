@@ -27,7 +27,7 @@ public class ExploreController {
             @RequestParam(required = false) Double minAvgStudents,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "25") int perPage,
-            @RequestParam(defaultValue = "totalStudents") String sort,
+            @RequestParam(defaultValue = "avgStudents") String sort,
             @RequestParam(defaultValue = "desc") String order) {
         return exploreService.exploreCourses(subject, instructor, minStudents, minAvgStudents, page, perPage, sort, order);
     }
@@ -38,7 +38,7 @@ public class ExploreController {
             @RequestParam(required = false) Double minAvgStudents,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "25") int perPage,
-            @RequestParam(defaultValue = "totalStudents") String sort,
+            @RequestParam(defaultValue = "avgStudents") String sort,
             @RequestParam(defaultValue = "desc") String order) {
         return exploreService.exploreSubjects(minStudents, minAvgStudents, page, perPage, sort, order);
     }
@@ -51,7 +51,7 @@ public class ExploreController {
             @RequestParam(required = false) Double minAvgStudents,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "25") int perPage,
-            @RequestParam(defaultValue = "totalStudents") String sort,
+            @RequestParam(defaultValue = "avgStudents") String sort,
             @RequestParam(defaultValue = "desc") String order) {
         return exploreService.exploreInstructors(subject, instructor, minStudents, minAvgStudents, page, perPage, sort, order);
     }
