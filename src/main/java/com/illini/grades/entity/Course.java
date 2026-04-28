@@ -24,4 +24,8 @@ public class Course {
 
     @Column(length = 255)
     private String title;
+
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "id", referencedColumnName = "course_id", insertable = false, updatable = false)
+    private CourseGrade courseGrade;
 }

@@ -43,15 +43,39 @@ public class CourseService {
         if (perPage > 100) perPage = 100;
         
         Page<Course> result;
-        if (query != null && !query.isBlank() && sort == null) {
+        if (query != null && !query.isBlank()) {
             String q = normalizeQuery(query);
-            result = courseRepository.searchByQuery(q, PageRequest.of(page - 1, perPage));
+            if ("relevance".equalsIgnoreCase(sort)) {
+                result = courseRepository.searchByQuery(q, PageRequest.of(page - 1, perPage));
+            } else if ("total_grades".equalsIgnoreCase(sort)) {
+                result = courseRepository.searchByQueryOrderByTotalGrades(q, PageRequest.of(page - 1, perPage));
+            } else {
+                result = courseRepository.searchByQueryOrderByPopularity(q, PageRequest.of(page - 1, perPage));
+            }
         } else {
-            Sort.Direction direction = "desc".equalsIgnoreCase(order) ? Sort.Direction.DESC : Sort.Direction.ASC;
-            String sortBy = "title".equalsIgnoreCase(sort) || "name".equalsIgnoreCase(sort) ? "title" : "number";
+            Sort.Direction direction = "asc".equalsIgnoreCase(order) ? Sort.Direction.ASC : Sort.Direction.DESC;
+            String sortBy;
+            if ("total_grades".equalsIgnoreCase(sort)) {
+                sortBy = "courseGrade.totalStudents";
+            } else if ("title".equalsIgnoreCase(sort) || "name".equalsIgnoreCase(sort)) {
+                sortBy = "title";
+            } else if ("relevance".equalsIgnoreCase(sort)) {
+                sortBy = "number";
+            } else {
+                sortBy = "courseGrade.avgStudents"; // Default to popularity
+                if (sort == null || sort.isBlank() || "popularity".equalsIgnoreCase(sort)) {
+                    direction = "asc".equalsIgnoreCase(order) ? Sort.Direction.ASC : Sort.Direction.DESC;
+                }
+            }
+            
             PageRequest pageRequest = PageRequest.of(page - 1, perPage, Sort.by(direction, sortBy));
             
             Specification<Course> spec = (root, q, cb) -> {
+                if (q.getResultType() != Long.class && q.getResultType() != long.class) {
+                    if ("courseGrade.avgStudents".equals(sortBy) || "courseGrade.totalStudents".equals(sortBy)) {
+                        root.fetch("courseGrade", JoinType.LEFT);
+                    }
+                }
                 var predicates = new ArrayList<jakarta.persistence.criteria.Predicate>();
                 if (subjectCode != null && !subjectCode.isBlank()) {
                     predicates.add(cb.equal(root.get("subject").get("code"), subjectCode));
@@ -65,10 +89,6 @@ public class CourseService {
                     subquery.select(sRoot.get("courseOffering").get("course").get("id"))
                             .where(cb.equal(sRoot.get("instructor").get("id"), instructorId));
                     predicates.add(root.get("id").in(subquery));
-                }
-                if (query != null && !query.isBlank()) {
-                    String qstr = query.toLowerCase();
-                    predicates.add(cb.like(cb.lower(root.get("title")), "%" + qstr + "%"));
                 }
                 return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
             };
