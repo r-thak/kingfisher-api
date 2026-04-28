@@ -74,7 +74,7 @@ public class ExploreService {
         Page<CourseGrade> res = courseGradeRepository.findAll(spec, pageReq);
         List<ExploreCourseDto> dtos = res.stream().map(cg -> {
             var c = courseRepository.findById(cg.getCourseId()).orElseThrow();
-            var csDto = new CourseSummaryDto(c.getId(), new SubjectSummaryDto(c.getSubject().getId(), c.getSubject().getCode()), c.getNumber(), c.getTitle(), baseUrl + "/v1/courses/" + c.getId());
+            var csDto = new CourseSummaryDto(c.getId(), new SubjectSummaryDto(c.getSubject().getId(), c.getSubject().getCode()), c.getNumber(), c.getTitle(), cg.getGpa(), cg.getTotalStudents(), baseUrl + "/v1/courses/" + c.getId());
             return new ExploreCourseDto(csDto, cg.getTotalStudents(), cg.getAvgStudents(), cg.getGpa());
         }).toList();
 

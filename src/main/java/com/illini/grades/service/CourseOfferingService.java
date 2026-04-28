@@ -1,6 +1,7 @@
 package com.illini.grades.service;
 
 import com.illini.grades.dto.*;
+import com.illini.grades.entity.CourseGrade;
 import com.illini.grades.entity.CourseOffering;
 import com.illini.grades.entity.Section;
 import com.illini.grades.exception.ResourceNotFoundException;
@@ -35,7 +36,7 @@ public class CourseOfferingService {
         var term = co.getTerm();
 
         SubjectSummaryDto subjectDto = new SubjectSummaryDto(subject.getId(), subject.getCode());
-        CourseSummaryDto courseDto = new CourseSummaryDto(course.getId(), subjectDto, course.getNumber(), course.getTitle(), baseUrl + "/v1/courses/" + course.getId());
+        CourseSummaryDto courseDto = new CourseSummaryDto(course.getId(), subjectDto, course.getNumber(), course.getTitle(), course.getCourseGrade() != null ? course.getCourseGrade().getGpa() : null, course.getCourseGrade() != null ? course.getCourseGrade().getTotalStudents() : null, baseUrl + "/v1/courses/" + course.getId());
         TermDto termDto = new TermDto(term.getId(), term.getYear(), term.getSeason(), term.getYearTerm());
 
         List<Section> sections = sectionRepository.findByCourseOfferingId(co.getId());
