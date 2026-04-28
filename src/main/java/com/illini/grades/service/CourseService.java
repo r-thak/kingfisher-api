@@ -73,9 +73,10 @@ public class CourseService {
             
             PageRequest pageRequest = PageRequest.of(page - 1, perPage, Sort.by(direction, sortBy));
             
+            final String finalSortBy = sortBy;
             Specification<Course> spec = (root, q, cb) -> {
                 if (q.getResultType() != Long.class && q.getResultType() != long.class) {
-                    if ("courseGrade.gpa".equals(sortBy) || "courseGrade.totalStudents".equals(sortBy) || "courseGrade.avgStudents".equals(sortBy)) {
+                    if ("courseGrade.gpa".equals(finalSortBy) || "courseGrade.totalStudents".equals(finalSortBy) || "courseGrade.avgStudents".equals(finalSortBy)) {
                         root.fetch("courseGrade", JoinType.LEFT);
                     }
                 }
