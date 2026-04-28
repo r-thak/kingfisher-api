@@ -32,7 +32,7 @@ curl -X POST http://localhost:5902/v1/admin/ingest \
 ```
 
 ## Docs
-[http://localhost:5902/swagger-ui.html](http://localhost:5902/swagger-ui.html)
+[https://kingfisherapi.rthak.com/swagger-ui/index.html](https://kingfisherapi.rthak.com/swagger-ui/index.html)
 
 TO DO:
 - Automate messages to professors to request copies of past syllabi
