@@ -23,7 +23,7 @@ public class CourseController {
     public PagedResponse<CourseSummaryDto> listCourses(
             @RequestParam(required = false) String query,
             @RequestParam(required = false) String subject,
-            @RequestParam(required = false) Long instructor,
+            @RequestParam(required = false) String instructor,
             @RequestParam(required = false) Integer number,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "25") int perPage,

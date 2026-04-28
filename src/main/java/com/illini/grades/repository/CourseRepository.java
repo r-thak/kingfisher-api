@@ -21,28 +21,14 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
         WHERE c.title % :query
            OR (s.code || ' ' || c.number::text) % :query
            OR (s.code || c.number::text) % :query
-        ORDER BY GREATEST(
-            similarity(c.title, :query),
-            similarity(s.code || ' ' || c.number::text, :query)
-        ) DESC
-        """,
-        countQuery = """
-        SELECT count(*) FROM courses c
-        JOIN subjects s ON s.id = c.subject_id
-        WHERE c.title % :query
-           OR (s.code || ' ' || c.number::text) % :query
-           OR (s.code || c.number::text) % :query
-        """, nativeQuery = true)
-    Page<Course> searchByQuery(@Param("query") String query, Pageable pageable);
-
-    @Query(value = """
-        SELECT c.* FROM courses c
-        JOIN subjects s ON s.id = c.subject_id
-        LEFT JOIN course_grades cg ON c.id = cg.course_id
-        WHERE c.title % :query
-           OR (s.code || ' ' || c.number::text) % :query
-           OR (s.code || c.number::text) % :query
-        ORDER BY cg.avg_students DESC NULLS LAST
+        ORDER BY (
+            SELECT CAST(SUM(sec.students) AS FLOAT) / NULLIF(COUNT(DISTINCT co.term_id), 0)
+            FROM course_offerings co
+            JOIN sections sec ON sec.course_offering_id = co.id
+            JOIN terms t ON t.id = co.term_id
+            WHERE co.course_id = c.id
+              AND t.year >= EXTRACT(YEAR FROM CURRENT_DATE) - 5
+        ) DESC NULLS LAST
         """,
         countQuery = """
         SELECT count(*) FROM courses c
@@ -70,4 +56,22 @@ public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecif
            OR (s.code || c.number::text) % :query
         """, nativeQuery = true)
     Page<Course> searchByQueryOrderByTotalGrades(@Param("query") String query, Pageable pageable);
+
+    @Query(value = """
+        SELECT c.* FROM courses c
+        JOIN subjects s ON s.id = c.subject_id
+        LEFT JOIN course_grades cg ON c.id = cg.course_id
+        WHERE c.title % :query
+           OR (s.code || ' ' || c.number::text) % :query
+           OR (s.code || c.number::text) % :query
+        ORDER BY cg.gpa DESC NULLS LAST
+        """,
+        countQuery = """
+        SELECT count(*) FROM courses c
+        JOIN subjects s ON s.id = c.subject_id
+        WHERE c.title % :query
+           OR (s.code || ' ' || c.number::text) % :query
+           OR (s.code || c.number::text) % :query
+        """, nativeQuery = true)
+    Page<Course> searchByQueryOrderByGpa(@Param("query") String query, Pageable pageable);
 }
