@@ -5,5 +5,7 @@ public record CourseSummaryDto(
     SubjectSummaryDto subject,
     int number,
     String title,
+    Double gpa,
+    Integer totalStudents,
     String url
 ) {}

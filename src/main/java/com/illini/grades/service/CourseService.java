@@ -39,14 +39,14 @@ public class CourseService {
         this.baseUrl = baseUrl;
     }
 
-    public PagedResponse<CourseSummaryDto> listCourses(String query, String subjectCode, Long instructorId, Integer number, int page, int perPage, String sort, String order) {
+    public PagedResponse<CourseSummaryDto> listCourses(String query, String subjectCode, String instructorName, Integer number, int page, int perPage, String sort, String order) {
         if (perPage > 100) perPage = 100;
         
         Page<Course> result;
         if (query != null && !query.isBlank()) {
             String q = normalizeQuery(query);
-            if ("relevance".equalsIgnoreCase(sort)) {
-                result = courseRepository.searchByQuery(q, PageRequest.of(page - 1, perPage));
+            if ("gpa".equalsIgnoreCase(sort)) {
+                result = courseRepository.searchByQueryOrderByGpa(q, PageRequest.of(page - 1, perPage));
             } else if ("total_grades".equalsIgnoreCase(sort)) {
                 result = courseRepository.searchByQueryOrderByTotalGrades(q, PageRequest.of(page - 1, perPage));
             } else {
@@ -55,14 +55,19 @@ public class CourseService {
         } else {
             Sort.Direction direction = "asc".equalsIgnoreCase(order) ? Sort.Direction.ASC : Sort.Direction.DESC;
             String sortBy;
-            if ("total_grades".equalsIgnoreCase(sort)) {
+            if ("gpa".equalsIgnoreCase(sort)) {
+                sortBy = "courseGrade.gpa";
+            } else if ("total_grades".equalsIgnoreCase(sort)) {
                 sortBy = "courseGrade.totalStudents";
             } else if ("title".equalsIgnoreCase(sort) || "name".equalsIgnoreCase(sort)) {
                 sortBy = "title";
-            } else if ("relevance".equalsIgnoreCase(sort)) {
+            } else if ("number".equalsIgnoreCase(sort)) {
                 sortBy = "number";
             } else {
-                sortBy = "courseGrade.avgStudents"; // Default to popularity
+                // We cannot trivially sort by the dynamic popularity in a standard JPA Specification without complex subqueries.
+                // For non-query searches, if they choose popularity, we will fallback to total_students as a proxy,
+                // or just sort by courseGrade.totalStudents. The requirement focuses on search.
+                sortBy = "courseGrade.totalStudents"; 
                 if (sort == null || sort.isBlank() || "popularity".equalsIgnoreCase(sort)) {
                     direction = "asc".equalsIgnoreCase(order) ? Sort.Direction.ASC : Sort.Direction.DESC;
                 }
@@ -72,7 +77,7 @@ public class CourseService {
             
             Specification<Course> spec = (root, q, cb) -> {
                 if (q.getResultType() != Long.class && q.getResultType() != long.class) {
-                    if ("courseGrade.avgStudents".equals(sortBy) || "courseGrade.totalStudents".equals(sortBy)) {
+                    if ("courseGrade.gpa".equals(sortBy) || "courseGrade.totalStudents".equals(sortBy) || "courseGrade.avgStudents".equals(sortBy)) {
                         root.fetch("courseGrade", JoinType.LEFT);
                     }
                 }
@@ -83,11 +88,11 @@ public class CourseService {
                 if (number != null) {
                     predicates.add(cb.equal(root.get("number"), number));
                 }
-                if (instructorId != null) {
+                if (instructorName != null && !instructorName.isBlank()) {
                     var subquery = q.subquery(Long.class);
                     var sRoot = subquery.from(Section.class);
                     subquery.select(sRoot.get("courseOffering").get("course").get("id"))
-                            .where(cb.equal(sRoot.get("instructor").get("id"), instructorId));
+                            .where(cb.like(cb.lower(sRoot.get("instructor").get("name")), "%" + instructorName.toLowerCase() + "%"));
                     predicates.add(root.get("id").in(subquery));
                 }
                 return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
@@ -100,6 +105,8 @@ public class CourseService {
                 new SubjectSummaryDto(c.getSubject().getId(), c.getSubject().getCode()),
                 c.getNumber(),
                 c.getTitle(),
+                c.getCourseGrade() != null ? c.getCourseGrade().getGpa() : null,
+                c.getCourseGrade() != null ? c.getCourseGrade().getTotalStudents() : null,
                 baseUrl + "/v1/courses/" + c.getId()
         )).toList();
 
@@ -154,6 +161,8 @@ public class CourseService {
                         new SubjectSummaryDto(c.getSubject().getId(), c.getSubject().getCode()),
                         c.getNumber(),
                         c.getTitle(),
+                        c.getCourseGrade() != null ? c.getCourseGrade().getGpa() : null,
+                        c.getCourseGrade() != null ? c.getCourseGrade().getTotalStudents() : null,
                         baseUrl + "/v1/courses/" + c.getId()
                 )).toList();
 
