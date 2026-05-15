@@ -122,33 +122,43 @@ public class CourseService {
         return new PagedResponse<>(page, result.getTotalPages(), result.getTotalElements(), dtos);
     }
 
-    private static final Map<String, String> SUBJECT_SYNONYMS = Map.ofEntries(
-            Map.entry("computer science", "CS"),
-            Map.entry("comp sci", "CS"),
-            Map.entry("math", "MATH"),
-            Map.entry("mathematics", "MATH"),
-            Map.entry("stat", "STAT"),
-            Map.entry("statistics", "STAT"),
-            Map.entry("phys", "PHYS"),
-            Map.entry("physics", "PHYS"),
-            Map.entry("econ", "ECON"),
-            Map.entry("economics", "ECON"),
-            Map.entry("bio", "IB"),
-            Map.entry("biology", "IB"),
-            Map.entry("chem", "CHEM"),
-            Map.entry("chemistry", "CHEM")
-    );
+    private static final Map<String, String> SEARCH_SYNONYMS = new LinkedHashMap<>();
+    static {
+        // Subjects
+        SEARCH_SYNONYMS.put("computer science", "CS");
+        SEARCH_SYNONYMS.put("comp sci", "CS");
+        SEARCH_SYNONYMS.put("math", "MATH");
+        SEARCH_SYNONYMS.put("mathematics", "MATH");
+        SEARCH_SYNONYMS.put("stat", "STAT");
+        SEARCH_SYNONYMS.put("statistics", "STAT");
+        SEARCH_SYNONYMS.put("phys", "PHYS");
+        SEARCH_SYNONYMS.put("physics", "PHYS");
+        SEARCH_SYNONYMS.put("econ", "ECON");
+        SEARCH_SYNONYMS.put("economics", "ECON");
+        SEARCH_SYNONYMS.put("bio", "IB");
+        SEARCH_SYNONYMS.put("biology", "IB");
+        SEARCH_SYNONYMS.put("chem", "CHEM");
+        SEARCH_SYNONYMS.put("chemistry", "CHEM");
+        
+        // Course specific tricky terms
+        SEARCH_SYNONYMS.put("algos", "algs");
+        SEARCH_SYNONYMS.put("algorithms", "algs");
+        SEARCH_SYNONYMS.put("introduction", "intro");
+        SEARCH_SYNONYMS.put("computer", "comp");
+        SEARCH_SYNONYMS.put("computation", "comp");
+        SEARCH_SYNONYMS.put("computing", "comp");
+        SEARCH_SYNONYMS.put("and", "&");
+    }
 
     private String normalizeQuery(String q) {
         String normalized = q.toLowerCase().trim();
         
-        for (Map.Entry<String, String> entry : SUBJECT_SYNONYMS.entrySet()) {
-            if (normalized.startsWith(entry.getKey())) {
-                normalized = normalized.replaceFirst(entry.getKey(), entry.getValue().toLowerCase());
-                break;
-            }
+        for (Map.Entry<String, String> entry : SEARCH_SYNONYMS.entrySet()) {
+            // Use word boundaries to avoid replacing parts of words (e.g., "statistical" -> "STATistical")
+            normalized = normalized.replaceAll("\\b" + entry.getKey() + "\\b", entry.getValue().toLowerCase());
         }
         
+        // Ensure space between subject and number (e.g., "cs374" -> "cs 374")
         return normalized.replaceAll("([a-z])(\\d)", "$1 $2").trim();
     }
 
