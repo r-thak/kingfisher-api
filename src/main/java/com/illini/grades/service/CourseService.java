@@ -22,6 +22,9 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import org.springframework.data.domain.PageImpl;
 
 @Service
 @Transactional(readOnly = true)
@@ -31,6 +34,9 @@ public class CourseService {
     private final CourseOfferingRepository courseOfferingRepository;
     private final SectionRepository sectionRepository;
     private final String baseUrl;
+
+    @PersistenceContext
+    private EntityManager em;
 
     public CourseService(CourseRepository courseRepository, CourseOfferingRepository courseOfferingRepository, SectionRepository sectionRepository, @Value("${app.base-url:http://localhost:8080}") String baseUrl) {
         this.courseRepository = courseRepository;
@@ -45,13 +51,88 @@ public class CourseService {
         Page<Course> result;
         if (query != null && !query.isBlank()) {
             String q = normalizeQuery(query);
-            if ("gpa".equalsIgnoreCase(sort)) {
-                result = courseRepository.searchByQueryOrderByGpa(q, PageRequest.of(page - 1, perPage));
-            } else if ("total_grades".equalsIgnoreCase(sort)) {
-                result = courseRepository.searchByQueryOrderByTotalGrades(q, PageRequest.of(page - 1, perPage));
-            } else {
-                result = courseRepository.searchByQueryOrderByPopularity(q, PageRequest.of(page - 1, perPage));
+
+            StringBuilder sql = new StringBuilder("""
+                SELECT c.* FROM courses c
+                JOIN subjects s ON s.id = c.subject_id
+                LEFT JOIN course_grades cg ON c.id = cg.course_id
+                 WHERE (c.title % :query
+                    OR (s.code || ' ' || c.number::text) % :query
+                    OR (s.code || c.number::text) % :query
+                    OR LOWER(c.title) LIKE '%' || :query || '%'
+                    OR LOWER(s.code || ' ' || c.number::text) LIKE '%' || :query || '%')
+            """);
+
+            if (subjectCode != null && !subjectCode.isBlank()) {
+                sql.append(" AND s.code = :subject ");
             }
+
+            if (number != null) {
+                sql.append(" AND c.number = :number ");
+            }
+
+            String[] instructorTokens = null;
+            if (instructorName != null && !instructorName.isBlank()) {
+                instructorTokens = Arrays.stream(instructorName.toLowerCase().split("\\s+"))
+                                         .filter(t -> !t.isBlank())
+                                         .toArray(String[]::new);
+                if (instructorTokens.length > 0) {
+                    sql.append(" AND EXISTS (SELECT 1 FROM course_offerings co JOIN sections sec ON sec.course_offering_id = co.id JOIN instructors i ON i.id = sec.instructor_id WHERE co.course_id = c.id ");
+                    for (int i = 0; i < instructorTokens.length; i++) {
+                        sql.append(" AND LOWER(i.name) LIKE :inst").append(i);
+                    }
+                    sql.append(") ");
+                }
+            }
+
+            // Sorting
+            String orderBy;
+            if ("gpa".equalsIgnoreCase(sort)) {
+                orderBy = "cg.gpa " + ("asc".equalsIgnoreCase(order) ? "ASC" : "DESC") + " NULLS LAST";
+            } else if ("total_grades".equalsIgnoreCase(sort)) {
+                orderBy = "cg.total_students " + ("asc".equalsIgnoreCase(order) ? "ASC" : "DESC") + " NULLS LAST";
+            } else if ("title".equalsIgnoreCase(sort) || "name".equalsIgnoreCase(sort)) {
+                orderBy = "c.title " + ("desc".equalsIgnoreCase(order) ? "DESC" : "ASC");
+            } else if ("avg_students".equalsIgnoreCase(sort) || "popularity".equalsIgnoreCase(sort)) {
+                orderBy = "cg.avg_students " + ("asc".equalsIgnoreCase(order) ? "ASC" : "DESC") + " NULLS LAST";
+            } else { // default to closest match
+                orderBy = "(CASE WHEN :query ~ ('\\y' || LOWER(s.code) || '\\y') THEN 1.0 ELSE 0.0 END) + " +
+                          "GREATEST(similarity(c.title, :query), similarity(s.code || ' ' || c.number::text, :query)) DESC NULLS LAST";
+            }
+
+            String countSql = "SELECT count(*) FROM (" + sql.toString() + ") AS sq";
+            sql.append(" ORDER BY ").append(orderBy);
+
+            jakarta.persistence.Query queryObj = em.createNativeQuery(sql.toString(), Course.class);
+            jakarta.persistence.Query countQueryObj = em.createNativeQuery(countSql);
+
+            queryObj.setParameter("query", q);
+            countQueryObj.setParameter("query", q);
+
+            if (subjectCode != null && !subjectCode.isBlank()) {
+                queryObj.setParameter("subject", subjectCode);
+                countQueryObj.setParameter("subject", subjectCode);
+            }
+
+            if (number != null) {
+                queryObj.setParameter("number", number);
+                countQueryObj.setParameter("number", number);
+            }
+
+            if (instructorTokens != null && instructorTokens.length > 0) {
+                for (int i = 0; i < instructorTokens.length; i++) {
+                    queryObj.setParameter("inst" + i, "%" + instructorTokens[i] + "%");
+                    countQueryObj.setParameter("inst" + i, "%" + instructorTokens[i] + "%");
+                }
+            }
+
+            queryObj.setFirstResult((page - 1) * perPage);
+            queryObj.setMaxResults(perPage);
+
+            @SuppressWarnings("unchecked")
+            List<Course> list = queryObj.getResultList();
+            long total = ((Number) countQueryObj.getSingleResult()).longValue();
+            result = new PageImpl<>(list, PageRequest.of(page - 1, perPage), total);
         } else {
             Sort.Direction direction = "asc".equalsIgnoreCase(order) ? Sort.Direction.ASC : Sort.Direction.DESC;
             String sortBy;
@@ -64,10 +145,10 @@ public class CourseService {
             } else if ("avg_students".equalsIgnoreCase(sort) || "popularity".equalsIgnoreCase(sort)) {
                 sortBy = "courseGrade.avgStudents";
             } else {
-                sortBy = "courseGrade.totalStudents"; 
-                if (sort == null || sort.isBlank()) {
-                    sortBy = "courseGrade.avgStudents";
+                sortBy = "courseGrade.avgStudents"; 
+                if (sort == null || sort.isBlank() || "match".equalsIgnoreCase(sort)) {
                     direction = "asc".equalsIgnoreCase(order) ? Sort.Direction.ASC : Sort.Direction.DESC;
+                    if ("match".equalsIgnoreCase(sort)) direction = Sort.Direction.DESC; // popularity fallback is DESC
                 }
             }
             
@@ -159,7 +240,16 @@ public class CourseService {
         }
         
         // Ensure space between subject and number (e.g., "cs374" -> "cs 374")
-        return normalized.replaceAll("([a-z])(\\d)", "$1 $2").trim();
+        normalized = normalized.replaceAll("([a-z])(\\d)", "$1 $2");
+        
+        // Translate Arabic numerals to Roman numerals for course titles (e.g. "Calculus 3" -> "Calculus III")
+        normalized = normalized.replaceAll("\\b1\\b", "i");
+        normalized = normalized.replaceAll("\\b2\\b", "ii");
+        normalized = normalized.replaceAll("\\b3\\b", "iii");
+        normalized = normalized.replaceAll("\\b4\\b", "iv");
+        normalized = normalized.replaceAll("\\b5\\b", "v");
+        
+        return normalized.trim();
     }
 
     public CourseDetailDto getCourse(Long id) {
