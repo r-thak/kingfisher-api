@@ -52,10 +52,54 @@ public class CourseService {
         if (query != null && !query.isBlank()) {
             String q = normalizeQuery(query);
 
-            StringBuilder sql = new StringBuilder("""
+            boolean isExactMatch = q.matches("^[a-z]+\\s+\\d+$");
+            
+            StringBuilder sql = new StringBuilder();
+            if (isExactMatch && (sort == null || "match".equalsIgnoreCase(sort) || "".equals(sort))) {
+                sql.append("""
+                    WITH RECURSIVE
+                      target_course AS (
+                          SELECT c.id
+                          FROM courses c JOIN subjects s ON s.id = c.subject_id
+                          WHERE LOWER(s.code || ' ' || c.number::text) = :query LIMIT 1
+                      ),
+                      forward_chain(id, depth) AS (
+                          SELECT id, 0 FROM target_course
+                          UNION ALL
+                          SELECT cp.course_id, fc.depth + 1
+                          FROM course_prerequisites cp
+                          JOIN forward_chain fc ON cp.prerequisite_id = fc.id
+                          WHERE fc.depth < 5
+                      ),
+                      backward_chain(id, depth) AS (
+                          SELECT id, 0 FROM target_course
+                          UNION ALL
+                          SELECT cp.prerequisite_id, bc.depth + 1
+                          FROM course_prerequisites cp
+                          JOIN backward_chain bc ON cp.course_id = bc.id
+                          WHERE bc.depth < 5
+                      ),
+                      chain_distances AS (
+                          SELECT id, MIN(depth) as depth, MAX(is_after) as is_after FROM (
+                              SELECT id, MIN(depth) as depth, 1 as is_after FROM forward_chain WHERE depth > 0 GROUP BY id
+                              UNION ALL
+                              SELECT id, MIN(depth) as depth, 0 as is_after FROM backward_chain WHERE depth > 0 GROUP BY id
+                          ) sub GROUP BY id
+                      )
+                    """);
+            }
+            
+            sql.append("""
                 SELECT c.* FROM courses c
                 JOIN subjects s ON s.id = c.subject_id
                 LEFT JOIN course_grades cg ON c.id = cg.course_id
+            """);
+            
+            if (isExactMatch && (sort == null || "match".equalsIgnoreCase(sort) || "".equals(sort))) {
+                sql.append(" LEFT JOIN chain_distances cd ON c.id = cd.id ");
+            }
+            
+            sql.append("""
                  WHERE (c.title % :query
                     OR (s.code || ' ' || c.number::text) % :query
                     OR (s.code || c.number::text) % :query
@@ -96,8 +140,18 @@ public class CourseService {
             } else if ("avg_students".equalsIgnoreCase(sort) || "popularity".equalsIgnoreCase(sort)) {
                 orderBy = "cg.avg_students " + ("asc".equalsIgnoreCase(order) ? "ASC" : "DESC") + " NULLS LAST";
             } else { // default to closest match
-                orderBy = "(CASE WHEN :query ~ ('\\y' || LOWER(s.code) || '\\y') THEN 1.0 ELSE 0.0 END) + " +
-                          "GREATEST(similarity(c.title, :query), similarity(s.code || ' ' || c.number::text, :query)) DESC NULLS LAST";
+                if (isExactMatch) {
+                    orderBy = "(CASE WHEN LOWER(s.code || ' ' || c.number::text) = :query THEN 1 ELSE 0 END) DESC, " +
+                              "cd.depth ASC NULLS LAST, " +
+                              "cd.is_after DESC NULLS LAST, " +
+                              "(CASE WHEN :query ~ ('\\y' || LOWER(s.code) || '\\y') THEN 1.0 ELSE 0.0 END) + " +
+                              "GREATEST(similarity(c.title, :query), similarity(s.code || ' ' || c.number::text, :query)) DESC NULLS LAST, " +
+                              "cg.total_students DESC NULLS LAST";
+                } else {
+                    orderBy = "(CASE WHEN :query ~ ('\\y' || LOWER(s.code) || '\\y') THEN 1.0 ELSE 0.0 END) + " +
+                              "GREATEST(similarity(c.title, :query), similarity(s.code || ' ' || c.number::text, :query)) DESC NULLS LAST, " +
+                              "cg.total_students DESC NULLS LAST";
+                }
             }
 
             String countSql = "SELECT count(*) FROM (" + sql.toString() + ") AS sq";
@@ -241,6 +295,11 @@ public class CourseService {
         
         // Ensure space between subject and number (e.g., "cs374" -> "cs 374")
         normalized = normalized.replaceAll("([a-z])(\\d)", "$1 $2");
+        
+        // Handle common course renumberings/equivalents
+        normalized = normalized.replaceAll("\\bcs\\s+241\\b", "cs 341");
+        normalized = normalized.replaceAll("\\bcs\\s+125\\b", "cs 124");
+        normalized = normalized.replaceAll("\\bcs\\s+242\\b", "cs 222");
         
         // Translate Arabic numerals to Roman numerals for course titles (e.g. "Calculus 3" -> "Calculus III")
         normalized = normalized.replaceAll("\\b1\\b", "i");
