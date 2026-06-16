@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Optional;
 
 @Component
@@ -64,10 +65,8 @@ public class PrerequisiteIngestionRunner implements ApplicationRunner {
                     Optional<Subject> subjectOpt = subjectRepository.findByCode(sourceSubjectCode);
                     if (subjectOpt.isEmpty()) continue;
                     
-                    Optional<Course> courseOpt = courseRepository.findBySubjectIdAndNumber(subjectOpt.get().getId(), sourceNumber);
-                    if (courseOpt.isEmpty()) continue;
-                    
-                    Course sourceCourse = courseOpt.get();
+                    List<Course> sourceCourses = courseRepository.findBySubjectIdAndNumber(subjectOpt.get().getId(), sourceNumber);
+                    if (sourceCourses.isEmpty()) continue;
 
                     int prereqCount = Integer.parseInt(record.get("PrerequisiteNumber"));
                     for (int i = 0; i < prereqCount; i++) {
@@ -88,16 +87,18 @@ public class PrerequisiteIngestionRunner implements ApplicationRunner {
                         Optional<Subject> prereqSubjectOpt = subjectRepository.findByCode(prereqSubjectCode);
                         if (prereqSubjectOpt.isEmpty()) continue;
 
-                        Optional<Course> prereqCourseOpt = courseRepository.findBySubjectIdAndNumber(prereqSubjectOpt.get().getId(), prereqNumber);
-                        if (prereqCourseOpt.isEmpty()) continue;
+                        List<Course> prereqCourses = courseRepository.findBySubjectIdAndNumber(prereqSubjectOpt.get().getId(), prereqNumber);
+                        if (prereqCourses.isEmpty()) continue;
                         
-                        Course prereqCourse = prereqCourseOpt.get();
-
-                        entityManager.createNativeQuery("INSERT INTO course_prerequisites (course_id, prerequisite_id) VALUES (?, ?) ON CONFLICT DO NOTHING")
-                                .setParameter(1, sourceCourse.getId())
-                                .setParameter(2, prereqCourse.getId())
-                                .executeUpdate();
-                        inserted++;
+                        for (Course sourceCourse : sourceCourses) {
+                            for (Course prereqCourse : prereqCourses) {
+                                entityManager.createNativeQuery("INSERT INTO course_prerequisites (course_id, prerequisite_id) VALUES (?, ?) ON CONFLICT DO NOTHING")
+                                        .setParameter(1, sourceCourse.getId())
+                                        .setParameter(2, prereqCourse.getId())
+                                        .executeUpdate();
+                                inserted++;
+                            }
+                        }
                     }
                     
                     if (inserted % 500 == 0) {

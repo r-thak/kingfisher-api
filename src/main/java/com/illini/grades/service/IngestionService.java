@@ -66,13 +66,13 @@ public class IngestionService {
                     });
 
                     Short number = Short.parseShort(numberStr);
-                    Course course = courseRepository.findBySubjectIdAndNumber(subject.getId(), number).orElseGet(() -> {
+                    Course course = courseRepository.findBySubjectIdAndNumberAndTitle(subject.getId(), number, courseTitle).orElseGet(() -> {
                         Course c = new Course();
                         c.setSubject(subject);
                         c.setNumber(number);
+                        c.setTitle(courseTitle);
                         return c;
                     });
-                    course.setTitle(courseTitle);
                     final Course savedCourse = courseRepository.save(course);
 
                     Instructor instructor = instructorRepository.findByName(instructorName).orElseGet(() -> {

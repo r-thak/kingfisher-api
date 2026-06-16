@@ -12,7 +12,8 @@ import java.util.List;
 import java.util.Optional;
 
 public interface CourseRepository extends JpaRepository<Course, Long>, JpaSpecificationExecutor<Course> {
-    Optional<Course> findBySubjectIdAndNumber(Long subjectId, Short number);
+    List<Course> findBySubjectIdAndNumber(Long subjectId, Short number);
+    Optional<Course> findBySubjectIdAndNumberAndTitle(Long subjectId, Short number, String title);
     List<Course> findByTitleAndNumber(String title, Short number);
 
     @Query(value = """
