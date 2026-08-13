@@ -2,3 +2,4 @@
 build/
 .env
 kingfisher-web
+.DS_Store
