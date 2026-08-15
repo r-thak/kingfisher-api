@@ -4,9 +4,12 @@ import com.illini.grades.dto.CourseDetailDto;
 import com.illini.grades.dto.CourseGradesResponseDto;
 import com.illini.grades.dto.CourseSummaryDto;
 import com.illini.grades.dto.PagedResponse;
+import com.illini.grades.dto.ScheduledSectionDto;
 import com.illini.grades.service.CourseService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/v1/courses")
@@ -40,5 +43,10 @@ public class CourseController {
     @GetMapping("/{id}/grades")
     public CourseGradesResponseDto getCourseGrades(@PathVariable Long id) {
         return courseService.getCourseGrades(id);
+    }
+
+    @GetMapping("/{id}/scheduled-sections")
+    public List<ScheduledSectionDto> getScheduledSections(@PathVariable Long id, @RequestParam String term) {
+        return courseService.getScheduledSections(id, term);
     }
 }

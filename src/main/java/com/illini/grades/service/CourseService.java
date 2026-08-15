@@ -7,9 +7,12 @@ import com.illini.grades.entity.Course;
 import com.illini.grades.entity.CourseOffering;
 import com.illini.grades.entity.Section;
 import com.illini.grades.exception.ResourceNotFoundException;
+import com.illini.grades.entity.ScheduledSection;
 import com.illini.grades.repository.CourseOfferingRepository;
 import com.illini.grades.repository.CourseRepository;
+import com.illini.grades.repository.ScheduledSectionRepository;
 import com.illini.grades.repository.SectionRepository;
+import com.illini.grades.repository.TermRepository;
 import com.illini.grades.util.GpaCalculator;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
@@ -33,15 +36,19 @@ public class CourseService {
     private final CourseRepository courseRepository;
     private final CourseOfferingRepository courseOfferingRepository;
     private final SectionRepository sectionRepository;
+    private final TermRepository termRepository;
+    private final ScheduledSectionRepository scheduledSectionRepository;
     private final String baseUrl;
 
     @PersistenceContext
     private EntityManager em;
 
-    public CourseService(CourseRepository courseRepository, CourseOfferingRepository courseOfferingRepository, SectionRepository sectionRepository, @Value("${app.base-url:http://localhost:8080}") String baseUrl) {
+    public CourseService(CourseRepository courseRepository, CourseOfferingRepository courseOfferingRepository, SectionRepository sectionRepository, TermRepository termRepository, ScheduledSectionRepository scheduledSectionRepository, @Value("${app.base-url:http://localhost:8080}") String baseUrl) {
         this.courseRepository = courseRepository;
         this.courseOfferingRepository = courseOfferingRepository;
         this.sectionRepository = sectionRepository;
+        this.termRepository = termRepository;
+        this.scheduledSectionRepository = scheduledSectionRepository;
         this.baseUrl = baseUrl;
     }
 
@@ -400,6 +407,36 @@ public class CourseService {
 
         GradeDistributionDto cumulative = GpaCalculator.sum(overallDists);
         return new CourseGradesResponseDto(id, cumulative, coGradeDtos);
+    }
+
+    public List<ScheduledSectionDto> getScheduledSections(Long id, String yearTerm) {
+        if (!courseRepository.existsById(id)) throw new ResourceNotFoundException("Course not found");
+        var term = termRepository.findByYearTerm(yearTerm)
+                .orElseThrow(() -> new ResourceNotFoundException("Term not found: " + yearTerm));
+        var offeringOpt = courseOfferingRepository.findByCourseIdAndTermId(id, term.getId());
+        if (offeringOpt.isEmpty()) return List.of();
+
+        List<ScheduledSection> sections = scheduledSectionRepository.findByCourseOfferingIdOrderBySectionNumberAsc(offeringOpt.get().getId());
+        return sections.stream().map(s -> new ScheduledSectionDto(
+                s.getId(),
+                s.getCrn(),
+                s.getSectionNumber(),
+                s.getStatusCode(),
+                s.getPartOfTerm(),
+                s.getStartDate(),
+                s.getEndDate(),
+                s.getNotes(),
+                s.getMeetings().stream().map(m -> new ScheduledSectionMeetingDto(
+                        m.getStartTime(),
+                        m.getEndTime(),
+                        m.getDaysOfWeek(),
+                        m.getRoomNumber(),
+                        m.getBuildingName(),
+                        m.getTypeCode(),
+                        m.getTypeDescription(),
+                        m.getInstructors().stream().map(i -> new InstructorSummaryDto(i.getId(), i.getName())).toList()
+                )).toList()
+        )).toList();
     }
 
     private int seasonOrder(String season) {

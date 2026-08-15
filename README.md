@@ -31,6 +31,30 @@ curl -X POST http://localhost:5902/v1/admin/ingest \
   -F "file=@uiuc-gpa-dataset.csv"
 ```
 
+## Live section schedules
+`/v1/admin/ingest-sections` pulls live section schedules (CRN, meeting times/rooms,
+instructors) for a given term directly from the public UIUC Course Explorer, rather
+than from a CSV. Runs in the background (it's a long walk of the Course Explorer's
+own subject/course/section catalog with a deliberate delay between requests, so it
+respects their rate limits) — the response comes back immediately, check server logs
+for progress:
+
+```bash
+curl -X POST "http://localhost:5902/v1/admin/ingest-sections?year=2026&season=fall" \
+  -H "Authorization: Bearer your-api-key-here"
+```
+
+Safe to re-trigger for the same term at any point (e.g. periodically during
+registration) — it upserts by CRN and prunes sections that disappeared from the
+schedule. Only one ingestion runs at a time; a second call while one is in progress
+returns an error instead of running concurrently. Seat/enrollment counts aren't
+included — the public Course Explorer API doesn't expose those, only schedule data.
+
+Read the ingested data back via:
+```
+GET /v1/courses/{id}/scheduled-sections?term=2026-fa
+```
+
 ## Docs
 [https://kingfisherapi.rthak.com/swagger-ui/index.html](https://kingfisherapi.rthak.com/swagger-ui/index.html)
 
