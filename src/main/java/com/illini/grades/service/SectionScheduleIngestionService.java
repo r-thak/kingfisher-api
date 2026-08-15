@@ -378,6 +378,142 @@ public class SectionScheduleIngestionService {
         }
     }
 
+    private final java.util.concurrent.ConcurrentHashMap<String, java.time.Instant> lastRefreshTimes = new java.util.concurrent.ConcurrentHashMap<>();
+
+    public record CourseRefreshStatus(
+        boolean success,
+        String message,
+        long secondsRemaining,
+        java.time.Instant lastRefreshedAt,
+        int sectionsCount
+    ) {}
+
+    @org.springframework.scheduling.annotation.Scheduled(cron = "0 0 3 * * SUN")
+    public void scheduledWeeklyIngest() {
+        String defaultTerm = termRepository.findAllByOrderByYearAscSeasonAsc().stream()
+                .reduce((first, second) -> second)
+                .map(Term::getYearTerm)
+                .orElse("2026-fa");
+        String[] parts = defaultTerm.split("-");
+        int year = Integer.parseInt(parts[0]);
+        String season = switch (parts[1]) {
+            case "sp" -> "spring";
+            case "su" -> "summer";
+            case "fa" -> "fall";
+            case "wi" -> "winter";
+            default -> "fall";
+        };
+        start(year, season);
+    }
+
+
+    public CourseRefreshStatus getCourseRefreshStatus(Long courseId, String yearTerm) {
+        String key = courseId + ":" + (yearTerm != null ? yearTerm.toLowerCase() : "default");
+        java.time.Instant last = lastRefreshTimes.get(key);
+        if (last == null && yearTerm != null && !yearTerm.isBlank()) {
+            Term term = termRepository.findByYearTerm(yearTerm.toLowerCase()).orElse(null);
+            if (term != null) {
+                CourseOffering co = courseOfferingRepository.findByCourseIdAndTermId(courseId, term.getId()).orElse(null);
+                if (co != null && co.getLastRefreshedAt() != null) {
+                    last = co.getLastRefreshedAt();
+                }
+            }
+        }
+
+        if (last == null) {
+            return new CourseRefreshStatus(true, "Ready to refresh", 0, null, 0);
+        }
+        long elapsedSeconds = java.time.Duration.between(last, java.time.Instant.now()).getSeconds();
+        long remaining = Math.max(0, 900 - elapsedSeconds);
+        return new CourseRefreshStatus(remaining == 0, remaining == 0 ? "Ready to refresh" : "On cooldown", remaining, last, 0);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public CourseRefreshStatus refreshCourseSections(Long courseId, String yearTerm) {
+
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new com.illini.grades.exception.ResourceNotFoundException("Course not found: " + courseId));
+
+        Term term;
+        if (yearTerm != null && !yearTerm.isBlank()) {
+            term = termRepository.findByYearTerm(yearTerm.toLowerCase())
+                    .orElseThrow(() -> new com.illini.grades.exception.ResourceNotFoundException("Term not found: " + yearTerm));
+        } else {
+            term = termRepository.findAllByOrderByYearAscSeasonAsc().stream()
+                    .reduce((first, second) -> second)
+                    .orElseThrow(() -> new com.illini.grades.exception.ResourceNotFoundException("No terms available"));
+        }
+
+        String key = courseId + ":" + term.getYearTerm().toLowerCase();
+        java.time.Instant last = lastRefreshTimes.get(key);
+        if (last == null) {
+            CourseOffering co = courseOfferingRepository.findByCourseIdAndTermId(course.getId(), term.getId()).orElse(null);
+            if (co != null && co.getLastRefreshedAt() != null) {
+                last = co.getLastRefreshedAt();
+            }
+        }
+        if (last != null) {
+            long elapsedSeconds = java.time.Duration.between(last, java.time.Instant.now()).getSeconds();
+            if (elapsedSeconds < 900) {
+                long remaining = 900 - elapsedSeconds;
+                return new CourseRefreshStatus(false, "Rate limit reached. Please wait " + (remaining / 60 + 1) + " minutes before refreshing this course again.", remaining, last, 0);
+            }
+        }
+
+        String subjectCode = course.getSubject().getCode();
+        String numberStr = String.valueOf(course.getNumber());
+        int year = term.getYear();
+        String seasonLower = term.getSeason().toLowerCase();
+
+        FetchResult courseRes = fetch(BASE + "/" + year + "/" + seasonLower + "/" + subjectCode + "/" + numberStr + ".xml");
+        if (courseRes.status() != 200) {
+            return new CourseRefreshStatus(false, "Course not found on UIUC Course Explorer for " + term.getYearTerm() + " (HTTP " + courseRes.status() + ")", 0, null, 0);
+        }
+
+        List<String> crns;
+        try {
+            Element courseRoot = parse(courseRes.body()).getDocumentElement();
+            crns = attrValues(child(courseRoot, "sections"), "section", "id");
+        } catch (Exception e) {
+            return new CourseRefreshStatus(false, "Failed to parse course section list: " + e.getMessage(), 0, null, 0);
+        }
+
+        CourseOffering courseOffering = courseOfferingRepository.findByCourseIdAndTermId(course.getId(), term.getId())
+                .orElseGet(() -> {
+                    CourseOffering co = new CourseOffering();
+                    co.setCourse(course);
+                    co.setTerm(term);
+                    return courseOfferingRepository.save(co);
+                });
+
+        int upserted = 0;
+        List<String> seenCrns = new ArrayList<>();
+        for (String crn : crns) {
+            sleepBetweenRequests();
+            FetchResult secRes = fetch(BASE + "/" + year + "/" + seasonLower + "/" + subjectCode + "/" + numberStr + "/" + crn + ".xml");
+            if (secRes.status() != 200) continue;
+            try {
+                Element secRoot = parse(secRes.body()).getDocumentElement();
+                ParsedSection parsed = parseSection(secRoot);
+                writer.upsert(courseOffering, crn, parsed);
+                seenCrns.add(crn);
+                upserted++;
+            } catch (Exception e) {
+                System.err.println("Error upserting CRN " + crn + ": " + e.getMessage());
+            }
+        }
+
+        if (!seenCrns.isEmpty()) {
+            scheduledSectionRepository.deleteStale(courseOffering.getId(), seenCrns);
+        }
+
+        java.time.Instant now = java.time.Instant.now();
+        courseOffering.setLastRefreshedAt(now);
+        courseOfferingRepository.save(courseOffering);
+        lastRefreshTimes.put(key, now);
+        return new CourseRefreshStatus(true, "Successfully refreshed " + upserted + " sections from UIUC Course Explorer", 900, now, upserted);
+    }
+
     private ParsedSection parseSection(Element sectionRoot) {
         String sectionNumber = text(sectionRoot, "sectionNumber");
         String statusCode = text(sectionRoot, "statusCode");
@@ -425,3 +561,4 @@ public class SectionScheduleIngestionService {
     public record ParsedSection(String sectionNumber, String statusCode, String partOfTerm, LocalDate startDate,
                                  LocalDate endDate, String notes, List<ParsedMeeting> meetings) {}
 }
+

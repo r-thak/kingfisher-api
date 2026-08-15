@@ -5,6 +5,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.Instant;
+
 @Entity
 @Table(name = "course_offerings")
 @Getter
@@ -22,4 +24,7 @@ public class CourseOffering {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "term_id", nullable = false)
     private Term term;
+
+    @Column(name = "last_refreshed_at")
+    private Instant lastRefreshedAt;
 }

@@ -38,7 +38,12 @@ public class ScheduledSectionWriter {
         section.setEndDate(parsed.endDate());
         section.setNotes(parsed.notes());
 
+        // Flush the clear (and its orphan-removal deletes) before re-adding meetings below --
+        // otherwise Hibernate's default flush order runs the new meetings' INSERTs before the
+        // old ones' DELETEs, and re-ingesting a section collides on the (section, meeting_index)
+        // unique constraint since both old and new rows briefly share the same indices.
         section.getMeetings().clear();
+        scheduledSectionRepository.saveAndFlush(section);
 
         short idx = 0;
         for (SectionScheduleIngestionService.ParsedMeeting pm : parsed.meetings()) {

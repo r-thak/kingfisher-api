@@ -52,101 +52,169 @@ public class CourseService {
         this.baseUrl = baseUrl;
     }
 
-    public PagedResponse<CourseSummaryDto> listCourses(String query, String subjectCode, String instructorName, Integer number, int page, int perPage, String sort, String order) {
+    public PagedResponse<CourseSummaryDto> listCourses(String query, String subjectCode, String instructorName, Integer number, List<String> sectionTypes, String level, List<String> cohorts, String term, String filterMode, int page, int perPage, String sort, String order) {
         if (perPage > 100) perPage = 100;
-        
-        Page<Course> result;
-        if (query != null && !query.isBlank()) {
-            String q = normalizeQuery(query);
 
-            boolean isExactMatch = q.matches("^[a-z]+\\s+\\d+$");
-            
-            StringBuilder sql = new StringBuilder();
-            if (isExactMatch && (sort == null || "match".equalsIgnoreCase(sort) || "".equals(sort))) {
-                sql.append("""
-                    WITH RECURSIVE
-                      target_course AS (
-                          SELECT c.id
-                          FROM courses c JOIN subjects s ON s.id = c.subject_id
-                          WHERE LOWER(s.code || ' ' || c.number::text) = :query LIMIT 1
-                      ),
-                      forward_chain(id, depth) AS (
-                          SELECT id, 0 FROM target_course
-                          UNION ALL
-                          SELECT cp.course_id, fc.depth + 1
-                          FROM course_prerequisites cp
-                          JOIN forward_chain fc ON cp.prerequisite_id = fc.id
-                          WHERE fc.depth < 5
-                      ),
-                      backward_chain(id, depth) AS (
-                          SELECT id, 0 FROM target_course
-                          UNION ALL
-                          SELECT cp.prerequisite_id, bc.depth + 1
-                          FROM course_prerequisites cp
-                          JOIN backward_chain bc ON cp.course_id = bc.id
-                          WHERE bc.depth < 5
-                      ),
-                      chain_distances AS (
-                          SELECT id, MIN(depth) as depth, MAX(is_after) as is_after FROM (
-                              SELECT id, MIN(depth) as depth, 1 as is_after FROM forward_chain WHERE depth > 0 GROUP BY id
-                              UNION ALL
-                              SELECT id, MIN(depth) as depth, 0 as is_after FROM backward_chain WHERE depth > 0 GROUP BY id
-                          ) sub GROUP BY id
-                      )
-                    """);
-            }
-            
+        List<String> upperSectionTypes = (sectionTypes == null) ? List.of() :
+                sectionTypes.stream().filter(t -> t != null && !t.isBlank()).map(t -> t.trim().toUpperCase()).distinct().toList();
+
+        List<String> cleanCohorts = (cohorts == null) ? List.of() :
+                cohorts.stream().filter(c -> c != null && !c.isBlank()).map(String::trim).distinct().toList();
+
+        String q = (query != null && !query.isBlank()) ? normalizeQuery(query) : null;
+        boolean hasQuery = (q != null && !q.isBlank());
+        boolean isExactMatch = hasQuery && q.matches("^[a-z]+\\s+\\d+$");
+
+        StringBuilder sql = new StringBuilder();
+        if (isExactMatch && (sort == null || "match".equalsIgnoreCase(sort) || "".equals(sort))) {
             sql.append("""
-                SELECT c.* FROM courses c
-                JOIN subjects s ON s.id = c.subject_id
-                LEFT JOIN course_grades cg ON c.id = cg.course_id
-            """);
-            
-            if (isExactMatch && (sort == null || "match".equalsIgnoreCase(sort) || "".equals(sort))) {
-                sql.append(" LEFT JOIN chain_distances cd ON c.id = cd.id ");
-            }
-            
+                WITH RECURSIVE
+                  target_course AS (
+                      SELECT c.id
+                      FROM courses c JOIN subjects s ON s.id = c.subject_id
+                      WHERE LOWER(s.code || ' ' || c.number::text) = :query LIMIT 1
+                  ),
+                  forward_chain(id, depth) AS (
+                      SELECT id, 0 FROM target_course
+                      UNION ALL
+                      SELECT cp.course_id, fc.depth + 1
+                      FROM course_prerequisites cp
+                      JOIN forward_chain fc ON cp.prerequisite_id = fc.id
+                      WHERE fc.depth < 5
+                  ),
+                  backward_chain(id, depth) AS (
+                      SELECT id, 0 FROM target_course
+                      UNION ALL
+                      SELECT cp.prerequisite_id, bc.depth + 1
+                      FROM course_prerequisites cp
+                      JOIN backward_chain bc ON cp.course_id = bc.id
+                      WHERE bc.depth < 5
+                  ),
+                  chain_distances AS (
+                      SELECT id, MIN(depth) as depth, MAX(is_after) as is_after FROM (
+                          SELECT id, MIN(depth) as depth, 1 as is_after FROM forward_chain WHERE depth > 0 GROUP BY id
+                          UNION ALL
+                          SELECT id, MIN(depth) as depth, 0 as is_after FROM backward_chain WHERE depth > 0 GROUP BY id
+                      ) sub GROUP BY id
+                  )
+                """);
+        }
+
+        sql.append("""
+            SELECT c.* FROM courses c
+            JOIN subjects s ON s.id = c.subject_id
+            LEFT JOIN course_grades cg ON c.id = cg.course_id
+        """);
+
+        if (isExactMatch && (sort == null || "match".equalsIgnoreCase(sort) || "".equals(sort))) {
+            sql.append(" LEFT JOIN chain_distances cd ON c.id = cd.id ");
+        }
+
+        sql.append(" WHERE 1=1 ");
+
+        if (hasQuery) {
             sql.append("""
-                 WHERE (c.title % :query
+                 AND (c.title % :query
                     OR (s.code || ' ' || c.number::text) % :query
                     OR (s.code || c.number::text) % :query
                     OR LOWER(c.title) LIKE '%' || :query || '%'
                     OR LOWER(s.code || ' ' || c.number::text) LIKE '%' || :query || '%')
             """);
+        }
 
-            if (subjectCode != null && !subjectCode.isBlank()) {
-                sql.append(" AND s.code = :subject ");
+        if (subjectCode != null && !subjectCode.isBlank()) {
+            sql.append(" AND s.code = :subject ");
+        }
+
+        if (number != null) {
+            sql.append(" AND c.number = :number ");
+        }
+
+        if (level != null && !level.isBlank()) {
+            if ("undergrad".equalsIgnoreCase(level) || "ug".equalsIgnoreCase(level)) {
+                sql.append(" AND c.number < 500 ");
+            } else if ("graduate".equalsIgnoreCase(level) || "grad".equalsIgnoreCase(level)) {
+                sql.append(" AND c.number >= 500 ");
             }
+        }
 
-            if (number != null) {
-                sql.append(" AND c.number = :number ");
+        if (term != null && !term.isBlank() && !"all".equalsIgnoreCase(term)) {
+            sql.append(" AND EXISTS (SELECT 1 FROM course_offerings co JOIN terms t ON co.term_id = t.id WHERE co.course_id = c.id AND LOWER(t.year_term) = :term) ");
+        }
+
+        String[] instructorTokens = null;
+        if (instructorName != null && !instructorName.isBlank()) {
+            instructorTokens = Arrays.stream(instructorName.toLowerCase().split("[\\s,]+"))
+                                     .filter(t -> !t.isBlank())
+                                     .toArray(String[]::new);
+            if (instructorTokens.length > 0) {
+                sql.append(" AND EXISTS (SELECT 1 FROM course_offerings co JOIN sections sec ON sec.course_offering_id = co.id JOIN instructors i ON i.id = sec.instructor_id WHERE co.course_id = c.id ");
+                for (int i = 0; i < instructorTokens.length; i++) {
+                    sql.append(" AND (LOWER(i.name) LIKE :inst").append(i)
+                       .append(" OR i.name % :instRaw").append(i)
+                       .append(" OR similarity(LOWER(i.name), :instRaw").append(i).append(") > 0.3) ");
+                }
+                sql.append(") ");
             }
+        }
 
-            String[] instructorTokens = null;
-            if (instructorName != null && !instructorName.isBlank()) {
-                instructorTokens = Arrays.stream(instructorName.toLowerCase().split("\\s+"))
-                                         .filter(t -> !t.isBlank())
-                                         .toArray(String[]::new);
-                if (instructorTokens.length > 0) {
-                    sql.append(" AND EXISTS (SELECT 1 FROM course_offerings co JOIN sections sec ON sec.course_offering_id = co.id JOIN instructors i ON i.id = sec.instructor_id WHERE co.course_id = c.id ");
-                    for (int i = 0; i < instructorTokens.length; i++) {
-                        sql.append(" AND LOWER(i.name) LIKE :inst").append(i);
+        if (!upperSectionTypes.isEmpty()) {
+            sql.append(" AND EXISTS (SELECT 1 FROM course_offerings co JOIN sections sec ON sec.course_offering_id = co.id WHERE co.course_id = c.id AND UPPER(sec.sched_type) IN (:sectionTypes)) ");
+        }
+
+        if (!cleanCohorts.isEmpty()) {
+            List<String> positiveConditions = new ArrayList<>();
+            List<String> negativeConditions = new ArrayList<>();
+            for (String rawCohort : cleanCohorts) {
+                boolean isNot = rawCohort.startsWith("!") || rawCohort.startsWith("-");
+                String cohortTag = isNot ? rawCohort.substring(1).trim() : rawCohort.trim();
+                String cond = getCohortSqlCondition(cohortTag);
+                if (cond != null) {
+                    if (isNot) {
+                        negativeConditions.add(cond);
+                    } else {
+                        positiveConditions.add(cond);
                     }
-                    sql.append(") ");
                 }
             }
 
-            // Sorting
-            String orderBy;
-            if ("gpa".equalsIgnoreCase(sort)) {
-                orderBy = "cg.gpa " + ("asc".equalsIgnoreCase(order) ? "ASC" : "DESC") + " NULLS LAST";
-            } else if ("total_grades".equalsIgnoreCase(sort)) {
-                orderBy = "cg.total_students " + ("asc".equalsIgnoreCase(order) ? "ASC" : "DESC") + " NULLS LAST";
-            } else if ("title".equalsIgnoreCase(sort) || "name".equalsIgnoreCase(sort)) {
-                orderBy = "c.title " + ("desc".equalsIgnoreCase(order) ? "DESC" : "ASC");
-            } else if ("avg_students".equalsIgnoreCase(sort) || "popularity".equalsIgnoreCase(sort)) {
-                orderBy = "cg.avg_students " + ("asc".equalsIgnoreCase(order) ? "ASC" : "DESC") + " NULLS LAST";
-            } else { // default to closest match
+            if ("or".equalsIgnoreCase(filterMode)) {
+                if (!positiveConditions.isEmpty()) {
+                    sql.append(" AND EXISTS (SELECT 1 FROM course_offerings co JOIN scheduled_sections ss ON ss.course_offering_id = co.id WHERE co.course_id = c.id AND (")
+                       .append(String.join(" OR ", positiveConditions))
+                       .append(")) ");
+                }
+                for (String negCond : negativeConditions) {
+                    sql.append(" AND NOT EXISTS (SELECT 1 FROM course_offerings co JOIN scheduled_sections ss ON ss.course_offering_id = co.id WHERE co.course_id = c.id AND ")
+                       .append(negCond)
+                       .append(") ");
+                }
+            } else {
+                for (String posCond : positiveConditions) {
+                    sql.append(" AND EXISTS (SELECT 1 FROM course_offerings co JOIN scheduled_sections ss ON ss.course_offering_id = co.id WHERE co.course_id = c.id AND ")
+                       .append(posCond)
+                       .append(") ");
+                }
+                for (String negCond : negativeConditions) {
+                    sql.append(" AND NOT EXISTS (SELECT 1 FROM course_offerings co JOIN scheduled_sections ss ON ss.course_offering_id = co.id WHERE co.course_id = c.id AND ")
+                           .append(negCond)
+                           .append(") ");
+                }
+            }
+        }
+
+        // Sorting
+        String orderBy;
+        if ("gpa".equalsIgnoreCase(sort)) {
+            orderBy = "cg.gpa " + ("asc".equalsIgnoreCase(order) ? "ASC" : "DESC") + " NULLS LAST";
+        } else if ("total_grades".equalsIgnoreCase(sort)) {
+            orderBy = "cg.total_students " + ("asc".equalsIgnoreCase(order) ? "ASC" : "DESC") + " NULLS LAST";
+        } else if ("title".equalsIgnoreCase(sort) || "name".equalsIgnoreCase(sort)) {
+            orderBy = "c.title " + ("desc".equalsIgnoreCase(order) ? "DESC" : "ASC");
+        } else if ("avg_students".equalsIgnoreCase(sort) || "popularity".equalsIgnoreCase(sort)) {
+            orderBy = "cg.avg_students " + ("asc".equalsIgnoreCase(order) ? "ASC" : "DESC") + " NULLS LAST, cg.total_students " + ("asc".equalsIgnoreCase(order) ? "ASC" : "DESC") + " NULLS LAST";
+        } else { // default to closest match if query, otherwise popularity
+            if (hasQuery) {
                 if (isExactMatch) {
                     orderBy = "(CASE WHEN LOWER(s.code || ' ' || c.number::text) = :query THEN 1 ELSE 0 END) DESC, " +
                               "cd.depth ASC NULLS LAST, " +
@@ -159,96 +227,116 @@ public class CourseService {
                               "GREATEST(similarity(c.title, :query), similarity(s.code || ' ' || c.number::text, :query)) DESC NULLS LAST, " +
                               "cg.total_students DESC NULLS LAST";
                 }
+            } else {
+                orderBy = "cg.avg_students DESC NULLS LAST, cg.total_students DESC NULLS LAST, s.code ASC, c.number ASC";
             }
+        }
 
-            String countSql = "SELECT count(*) FROM (" + sql.toString() + ") AS sq";
-            sql.append(" ORDER BY ").append(orderBy);
+        String countSql = "SELECT count(*) FROM (" + sql.toString() + ") AS sq";
+        sql.append(" ORDER BY ").append(orderBy);
 
-            jakarta.persistence.Query queryObj = em.createNativeQuery(sql.toString(), Course.class);
-            jakarta.persistence.Query countQueryObj = em.createNativeQuery(countSql);
+        jakarta.persistence.Query queryObj = em.createNativeQuery(sql.toString(), Course.class);
+        jakarta.persistence.Query countQueryObj = em.createNativeQuery(countSql);
 
+        if (hasQuery) {
             queryObj.setParameter("query", q);
             countQueryObj.setParameter("query", q);
+        }
 
-            if (subjectCode != null && !subjectCode.isBlank()) {
-                queryObj.setParameter("subject", subjectCode);
-                countQueryObj.setParameter("subject", subjectCode);
+        if (subjectCode != null && !subjectCode.isBlank()) {
+            queryObj.setParameter("subject", subjectCode);
+            countQueryObj.setParameter("subject", subjectCode);
+        }
+
+        if (number != null) {
+            queryObj.setParameter("number", number);
+            countQueryObj.setParameter("number", number);
+        }
+
+        if (term != null && !term.isBlank() && !"all".equalsIgnoreCase(term)) {
+            queryObj.setParameter("term", term.trim().toLowerCase());
+            countQueryObj.setParameter("term", term.trim().toLowerCase());
+        }
+
+        if (instructorTokens != null && instructorTokens.length > 0) {
+            for (int i = 0; i < instructorTokens.length; i++) {
+                queryObj.setParameter("inst" + i, "%" + instructorTokens[i] + "%");
+                queryObj.setParameter("instRaw" + i, instructorTokens[i]);
+                countQueryObj.setParameter("inst" + i, "%" + instructorTokens[i] + "%");
+                countQueryObj.setParameter("instRaw" + i, instructorTokens[i]);
             }
+        }
 
-            if (number != null) {
-                queryObj.setParameter("number", number);
-                countQueryObj.setParameter("number", number);
-            }
+        if (!upperSectionTypes.isEmpty()) {
+            queryObj.setParameter("sectionTypes", upperSectionTypes);
+            countQueryObj.setParameter("sectionTypes", upperSectionTypes);
+        }
 
-            if (instructorTokens != null && instructorTokens.length > 0) {
-                for (int i = 0; i < instructorTokens.length; i++) {
-                    queryObj.setParameter("inst" + i, "%" + instructorTokens[i] + "%");
-                    countQueryObj.setParameter("inst" + i, "%" + instructorTokens[i] + "%");
-                }
-            }
+        queryObj.setFirstResult((page - 1) * perPage);
+        queryObj.setMaxResults(perPage);
 
-            queryObj.setFirstResult((page - 1) * perPage);
-            queryObj.setMaxResults(perPage);
+        @SuppressWarnings("unchecked")
+        List<Course> list = queryObj.getResultList();
+        long total = ((Number) countQueryObj.getSingleResult()).longValue();
+        Page<Course> result = new PageImpl<>(list, PageRequest.of(page - 1, perPage), total);
 
-            @SuppressWarnings("unchecked")
-            List<Course> list = queryObj.getResultList();
-            long total = ((Number) countQueryObj.getSingleResult()).longValue();
-            result = new PageImpl<>(list, PageRequest.of(page - 1, perPage), total);
-        } else {
-            Sort.Direction direction = "asc".equalsIgnoreCase(order) ? Sort.Direction.ASC : Sort.Direction.DESC;
-            String sortBy;
-            if ("gpa".equalsIgnoreCase(sort)) {
-                sortBy = "courseGrade.gpa";
-            } else if ("total_grades".equalsIgnoreCase(sort)) {
-                sortBy = "courseGrade.totalStudents";
-            } else if ("title".equalsIgnoreCase(sort) || "name".equalsIgnoreCase(sort)) {
-                sortBy = "title";
-            } else if ("avg_students".equalsIgnoreCase(sort) || "popularity".equalsIgnoreCase(sort)) {
-                sortBy = "courseGrade.avgStudents";
-            } else {
-                sortBy = "courseGrade.avgStudents"; 
-                if (sort == null || sort.isBlank() || "match".equalsIgnoreCase(sort)) {
-                    direction = "asc".equalsIgnoreCase(order) ? Sort.Direction.ASC : Sort.Direction.DESC;
-                    if ("match".equalsIgnoreCase(sort)) direction = Sort.Direction.DESC; // popularity fallback is DESC
-                }
-            }
-            
-            PageRequest pageRequest = PageRequest.of(page - 1, perPage, Sort.by(direction, sortBy));
-            
-            final String finalSortBy = sortBy;
-            Specification<Course> spec = (root, q, cb) -> {
-                if (q.getResultType() != Long.class && q.getResultType() != long.class) {
-                    if ("courseGrade.gpa".equals(finalSortBy) || "courseGrade.totalStudents".equals(finalSortBy) || "courseGrade.avgStudents".equals(finalSortBy)) {
-                        root.fetch("courseGrade", JoinType.LEFT);
+        List<String> availableCohorts = new ArrayList<>();
+        if (!list.isEmpty() || total > 0) {
+            String tagSubquery = "SELECT tag FROM (VALUES " +
+                "('undergrad'), ('graduate'), ('freshman'), ('senior'), " +
+                "('online'), ('online-mcs'), ('chicago-scholars'), ('online-business'), " +
+                "('coursera'), ('honors'), ('study-abroad'), ('netmath'), " +
+                "('majors-only'), ('non-majors'), ('approval-required'), " +
+                "('asynchronous'), ('synchronous'), ('additional-fee')" +
+                ") AS all_tags(tag) " +
+                "WHERE EXISTS ( " +
+                "    SELECT 1 FROM (" + sql.toString() + ") filtered_c " +
+                "    JOIN course_offerings co ON co.course_id = filtered_c.id " +
+                "    JOIN scheduled_sections ss ON ss.course_offering_id = co.id " +
+                "    WHERE ( " +
+                "        CASE tag " +
+                "            WHEN 'undergrad' THEN (filtered_c.number < 500 OR LOWER(ss.notes) LIKE '%undergrad%' OR LOWER(ss.notes) LIKE '%undergraduate%' OR UPPER(ss.section_number) LIKE '%U%' OR UPPER(ss.section_number) LIKE '%QU%' OR UPPER(ss.section_number) LIKE '%RU%' OR UPPER(ss.section_number) LIKE '%AMU%') " +
+                "            WHEN 'graduate' THEN (filtered_c.number >= 500 OR LOWER(ss.notes) LIKE '%grad%' OR LOWER(ss.notes) LIKE '%graduate%' OR UPPER(ss.section_number) LIKE '%G%' OR UPPER(ss.section_number) LIKE '%QG%' OR UPPER(ss.section_number) LIKE '%RG%' OR UPPER(ss.section_number) LIKE '%AMG%') " +
+                "            WHEN 'freshman' THEN (LOWER(ss.notes) LIKE '%first-time freshman%' OR LOWER(ss.notes) LIKE '%first time freshman%' OR LOWER(ss.notes) LIKE '%freshman%' OR LOWER(ss.notes) LIKE '%first-year%') " +
+                "            WHEN 'senior' THEN (LOWER(ss.notes) LIKE '%senior standing%' OR LOWER(ss.notes) LIKE '%senior%') " +
+                "            WHEN 'online' THEN (UPPER(ss.section_number) LIKE 'ONL%' OR LOWER(ss.notes) LIKE '%online%' OR EXISTS (SELECT 1 FROM scheduled_section_meetings ssm WHERE ssm.scheduled_section_id = ss.id AND UPPER(ssm.type_code) = 'ONL')) " +
+                "            WHEN 'online-mcs' THEN (LOWER(ss.notes) LIKE '%online mcs%' OR LOWER(ss.notes) LIKE '%mcs-ds%' OR LOWER(ss.notes) LIKE '%chicago mcs%' OR LOWER(ss.notes) LIKE '%master of computer science online%' OR UPPER(ss.section_number) LIKE 'DS%' OR UPPER(ss.section_number) LIKE 'MC%') " +
+                "            WHEN 'chicago-scholars' THEN (LOWER(ss.notes) LIKE '%chicago city scholars%' OR LOWER(ss.notes) LIKE '%chicago scholars%' OR UPPER(ss.section_number) = 'CSP') " +
+                "            WHEN 'online-business' THEN (LOWER(ss.notes) ~* '\\y(online msm|msm online|imba|imsm|imsa|ianalytics|gies online)\\y') " +
+
+                "            WHEN 'coursera' THEN LOWER(ss.notes) LIKE '%coursera%' " +
+                "            WHEN 'honors' THEN (LOWER(ss.notes) LIKE '%honors%' OR LOWER(ss.notes) LIKE '%james scholar%' OR LOWER(ss.notes) LIKE '%chancellor%scholar%' OR UPPER(ss.section_number) LIKE 'H%') " +
+                "            WHEN 'study-abroad' THEN (LOWER(ss.notes) LIKE '%study abroad%' OR LOWER(ss.notes) LIKE '%off-campus%' OR LOWER(ss.notes) LIKE '%off campus%') " +
+                "            WHEN 'netmath' THEN LOWER(ss.notes) LIKE '%netmath%' " +
+                "            WHEN 'majors-only' THEN (LOWER(ss.notes) LIKE '%restricted to %major%' OR LOWER(ss.notes) LIKE '%majors only%' OR LOWER(ss.notes) LIKE '%for % majors only%') " +
+                "            WHEN 'non-majors' THEN (LOWER(ss.notes) LIKE '%non-major%' OR LOWER(ss.notes) LIKE '%non major%' OR LOWER(ss.notes) LIKE '%non cs majors%' OR LOWER(ss.notes) LIKE '%for non-%') " +
+                "            WHEN 'approval-required' THEN (LOWER(ss.notes) LIKE '%consent of instructor%' OR LOWER(ss.notes) LIKE '%instructor approval%' OR LOWER(ss.notes) LIKE '%departmental approval%' OR LOWER(ss.notes) LIKE '%departmental consent%' OR LOWER(ss.notes) LIKE '%authorization required%' OR LOWER(ss.notes) LIKE '%by permit only%') " +
+                "            WHEN 'asynchronous' THEN LOWER(ss.notes) LIKE '%asynchronous%' " +
+                "            WHEN 'synchronous' THEN LOWER(ss.notes) LIKE '%synchronous%' " +
+                "            WHEN 'additional-fee' THEN (LOWER(ss.notes) LIKE '%course fee%' OR LOWER(ss.notes) LIKE '%lab fee%' OR LOWER(ss.notes) LIKE '%additional % fee%' OR LOWER(ss.notes) LIKE '%differential%') " +
+                "            ELSE FALSE " +
+                "        END " +
+                "    ) " +
+                ")";
+
+            try {
+                jakarta.persistence.Query tagQuery = em.createNativeQuery(tagSubquery);
+                if (hasQuery) tagQuery.setParameter("query", q);
+                if (subjectCode != null && !subjectCode.isBlank()) tagQuery.setParameter("subject", subjectCode);
+                if (number != null) tagQuery.setParameter("number", number);
+                if (term != null && !term.isBlank() && !"all".equalsIgnoreCase(term)) tagQuery.setParameter("term", term.trim().toLowerCase());
+                if (instructorTokens != null && instructorTokens.length > 0) {
+                    for (int i = 0; i < instructorTokens.length; i++) {
+                        tagQuery.setParameter("inst" + i, "%" + instructorTokens[i] + "%");
+                        tagQuery.setParameter("instRaw" + i, instructorTokens[i]);
                     }
                 }
-                var predicates = new ArrayList<jakarta.persistence.criteria.Predicate>();
-                if (subjectCode != null && !subjectCode.isBlank()) {
-                    predicates.add(cb.equal(root.get("subject").get("code"), subjectCode));
-                }
-                if (number != null) {
-                    predicates.add(cb.equal(root.get("number"), number));
-                }
-                if (instructorName != null && !instructorName.isBlank()) {
-                    String[] tokens = instructorName.toLowerCase().split("\\s+");
-                    var subquery = q.subquery(Long.class);
-                    var sRoot = subquery.from(Section.class);
-                    var instructorJoin = sRoot.join("instructor");
-                    
-                    var tokenPredicates = new ArrayList<jakarta.persistence.criteria.Predicate>();
-                    for (String token : tokens) {
-                        if (!token.isBlank()) {
-                            tokenPredicates.add(cb.like(cb.lower(instructorJoin.get("name")), "%" + token + "%"));
-                        }
-                    }
-                    
-                    subquery.select(sRoot.get("courseOffering").get("course").get("id"))
-                            .where(cb.and(tokenPredicates.toArray(new jakarta.persistence.criteria.Predicate[0])));
-                    predicates.add(root.get("id").in(subquery));
-                }
-                return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
-            };
-            result = courseRepository.findAll(spec, pageRequest);
+                if (!upperSectionTypes.isEmpty()) tagQuery.setParameter("sectionTypes", upperSectionTypes);
+
+                @SuppressWarnings("unchecked")
+                List<String> tags = tagQuery.getResultList();
+                availableCohorts.addAll(tags);
+            } catch (Exception ignored) {}
         }
 
         List<CourseSummaryDto> dtos = result.stream().map(c -> new CourseSummaryDto(
@@ -261,8 +349,9 @@ public class CourseService {
                 baseUrl + "/v1/courses/" + c.getId()
         )).toList();
 
-        return new PagedResponse<>(page, result.getTotalPages(), result.getTotalElements(), dtos);
+        return new PagedResponse<>(page, result.getTotalPages(), result.getTotalElements(), dtos, availableCohorts);
     }
+
 
     private static final Map<String, String> SEARCH_SYNONYMS = new LinkedHashMap<>();
     static {
@@ -439,6 +528,35 @@ public class CourseService {
         )).toList();
     }
 
+    private String getCohortSqlCondition(String tag) {
+        if (tag == null || tag.isBlank()) return null;
+        String t = tag.trim().toLowerCase();
+        return switch (t) {
+            case "undergrad", "undergrad-section" -> "(c.number < 500 OR LOWER(ss.notes) LIKE '%undergrad%' OR LOWER(ss.notes) LIKE '%undergraduate%' OR UPPER(ss.section_number) LIKE '%U%' OR UPPER(ss.section_number) LIKE '%QU%' OR UPPER(ss.section_number) LIKE '%RU%' OR UPPER(ss.section_number) LIKE '%AMU%')";
+            case "graduate", "grad", "grad-section" -> "(c.number >= 500 OR LOWER(ss.notes) LIKE '%grad%' OR LOWER(ss.notes) LIKE '%graduate%' OR UPPER(ss.section_number) LIKE '%G%' OR UPPER(ss.section_number) LIKE '%QG%' OR UPPER(ss.section_number) LIKE '%RG%' OR UPPER(ss.section_number) LIKE '%AMG%')";
+            case "online" -> "(UPPER(ss.section_number) LIKE 'ONL%' OR LOWER(ss.notes) LIKE '%online%' OR EXISTS (SELECT 1 FROM scheduled_section_meetings ssm WHERE ssm.scheduled_section_id = ss.id AND UPPER(ssm.type_code) = 'ONL') OR EXISTS (SELECT 1 FROM sections sec WHERE sec.course_offering_id = co.id AND UPPER(sec.sched_type) = 'ONL'))";
+            case "online-mcs" -> "(LOWER(ss.notes) LIKE '%online mcs%' OR LOWER(ss.notes) LIKE '%mcs-ds%' OR LOWER(ss.notes) LIKE '%chicago mcs%' OR LOWER(ss.notes) LIKE '%master of computer science online%' OR UPPER(ss.section_number) LIKE 'DS%' OR UPPER(ss.section_number) LIKE 'MC%')";
+
+
+            case "chicago-scholars", "chicago-city-scholars" -> "(LOWER(ss.notes) LIKE '%chicago city scholars%' OR LOWER(ss.notes) LIKE '%chicago scholars%' OR UPPER(ss.section_number) = 'CSP')";
+            case "online-business" -> "(LOWER(ss.notes) ~* '\\y(online msm|msm online|imba|imsm|imsa|ianalytics|gies online)\\y')";
+
+            case "coursera" -> "LOWER(ss.notes) LIKE '%coursera%'";
+            case "honors" -> "(LOWER(ss.notes) LIKE '%honors%' OR LOWER(ss.notes) LIKE '%james scholar%' OR LOWER(ss.notes) LIKE '%chancellor%scholar%' OR UPPER(ss.section_number) LIKE 'H%')";
+            case "majors-only" -> "(LOWER(ss.notes) LIKE '%restricted to %major%' OR LOWER(ss.notes) LIKE '%majors only%' OR LOWER(ss.notes) LIKE '%for % majors only%')";
+            case "non-majors" -> "(LOWER(ss.notes) LIKE '%non-major%' OR LOWER(ss.notes) LIKE '%non major%' OR LOWER(ss.notes) LIKE '%non cs majors%' OR LOWER(ss.notes) LIKE '%for non-%')";
+            case "study-abroad" -> "(LOWER(ss.notes) LIKE '%study abroad%' OR LOWER(ss.notes) LIKE '%off-campus%' OR LOWER(ss.notes) LIKE '%off campus%')";
+            case "freshman" -> "(LOWER(ss.notes) LIKE '%first-time freshman%' OR LOWER(ss.notes) LIKE '%first time freshman%' OR LOWER(ss.notes) LIKE '%freshman%' OR LOWER(ss.notes) LIKE '%first-year%')";
+            case "senior" -> "(LOWER(ss.notes) LIKE '%senior standing%' OR LOWER(ss.notes) LIKE '%senior%')";
+            case "approval-required" -> "(LOWER(ss.notes) LIKE '%consent of instructor%' OR LOWER(ss.notes) LIKE '%instructor approval%' OR LOWER(ss.notes) LIKE '%departmental approval%' OR LOWER(ss.notes) LIKE '%departmental consent%' OR LOWER(ss.notes) LIKE '%authorization required%' OR LOWER(ss.notes) LIKE '%by permit only%')";
+            case "fee", "additional-fee" -> "(LOWER(ss.notes) LIKE '%course fee%' OR LOWER(ss.notes) LIKE '%lab fee%' OR LOWER(ss.notes) LIKE '%additional % fee%' OR LOWER(ss.notes) LIKE '%differential%')";
+            case "asynchronous" -> "LOWER(ss.notes) LIKE '%asynchronous%'";
+            case "synchronous" -> "LOWER(ss.notes) LIKE '%synchronous%'";
+            case "netmath" -> "LOWER(ss.notes) LIKE '%netmath%'";
+            default -> null;
+        };
+    }
+
     private int seasonOrder(String season) {
         switch (season.toLowerCase()) {
             case "spring": return 1;
@@ -449,3 +567,4 @@ public class CourseService {
         }
     }
 }
+

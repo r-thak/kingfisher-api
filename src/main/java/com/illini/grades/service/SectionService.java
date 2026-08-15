@@ -9,6 +9,8 @@ import com.illini.grades.util.GpaCalculator;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 @Service
 public class SectionService {
 
@@ -44,5 +46,11 @@ public class SectionService {
         );
 
         return new SectionDetailDto(id, coDto, courseDto, instrDto, section.getSchedType(), grades);
+    }
+
+    public List<SectionTypeDto> listSectionTypes() {
+        return sectionRepository.countDistinctSchedTypes().stream()
+                .map(row -> new SectionTypeDto((String) row[0], ((Number) row[1]).longValue()))
+                .toList();
     }
 }
