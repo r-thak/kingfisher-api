@@ -339,6 +339,7 @@ public class CourseService {
                 new SubjectSummaryDto(course.getSubject().getId(), course.getSubject().getCode()),
                 course.getNumber(),
                 course.getTitle(),
+                course.getDescription(),
                 baseUrl + "/v1/courses/" + id + "/grades",
                 coDtos,
                 crosslistedDtos

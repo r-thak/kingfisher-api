@@ -7,6 +7,7 @@ public record CourseDetailDto(
     SubjectSummaryDto subject,
     int number,
     String title,
+    String description,
     String gradesUrl,
     List<CourseOfferingSummaryDto> courseOfferings,
     List<CourseSummaryDto> crosslisted
