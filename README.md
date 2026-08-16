@@ -32,12 +32,7 @@ curl -X POST http://localhost:5902/v1/admin/ingest \
 ```
 
 ## Live section schedules
-`/v1/admin/ingest-sections` pulls live section schedules (CRN, meeting times/rooms,
-instructors) for a given term directly from the public UIUC Course Explorer, rather
-than from a CSV. Runs in the background (it's a long walk of the Course Explorer's
-own subject/course/section catalog with a deliberate delay between requests, so it
-respects their rate limits) — the response comes back immediately, check server logs
-for progress:
+`/v1/admin/ingest-sections` pulls live section schedules (CRN, meeting times/rooms, instructors) for a given term directly from the public UIUC Course Explorer, rather than from a CSV. Runs in the background (it's a long walk of the Course Explorer's own subject/course/section catalog with a deliberate delay between requests, so it respects their rate limits) — the response comes back immediately, check server logs for progress:
 
 ```bash
 curl -X POST "http://localhost:5902/v1/admin/ingest-sections?year=2026&season=fall" \
@@ -53,6 +48,26 @@ included — the public Course Explorer API doesn't expose those, only schedule 
 Read the ingested data back via:
 ```
 GET /v1/courses/{id}/scheduled-sections?term=2026-fa
+```
+
+## Historical Course Explorer Scraper & CSV Import/Export
+For one-time bulk archival or populating past semesters (2004–present), use the scraper suite in `scripts/`:
+
+```bash
+# Discover all available terms on Course Explorer (2004-present)
+./scripts/run_historical_scrape.sh discover
+
+# Scrape all historical terms to CSV & JSON with resumable SQLite checkpointing
+./scripts/run_historical_scrape.sh scrape-all
+
+# Scrape a specific semester (e.g. 2024-fa)
+./scripts/run_historical_scrape.sh scrape-term 2024-fa
+
+# Scrape a year range (e.g. 2018 to 2025)
+./scripts/run_historical_scrape.sh scrape-range 2018 2025
+
+# Import previously scraped CSV directly into PostgreSQL without network calls
+./scripts/run_historical_scrape.sh import-csv data/course_explorer/all_historical_sections.csv
 ```
 
 ## Docs
