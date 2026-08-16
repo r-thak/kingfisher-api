@@ -17,7 +17,10 @@
 # 4. Scrape ALL historical semesters (2004 to present) to CSV:
 #    ./scripts/run_historical_scrape.sh scrape-all
 #
-# 5. Import previously scraped CSV into PostgreSQL:
+# 5. Export scraped sections from SQLite checkpoint to CSV:
+#    ./scripts/run_historical_scrape.sh export-csv data/course_explorer/sections.csv
+#
+# 6. Import previously scraped CSV into PostgreSQL:
 #    ./scripts/run_historical_scrape.sh import-csv data/course_explorer/sections_2024-fa.csv
 #
 # ==============================================================================
@@ -64,6 +67,18 @@ case "$cmd" in
     python3 "$PYTHON_SCRIPT" --all --export-csv "$csv_file" --export-json "$json_file"
     ;;
 
+  export-csv)
+    csv_file="${2:-$DATA_DIR/exported_sections.csv}"
+    echo "Exporting scraped sections to CSV ($csv_file)..."
+    python3 "$PYTHON_SCRIPT" --export-csv "$csv_file"
+    ;;
+
+  export-json)
+    json_file="${2:-$DATA_DIR/exported_sections.json}"
+    echo "Exporting scraped sections to JSON ($json_file)..."
+    python3 "$PYTHON_SCRIPT" --export-json "$json_file"
+    ;;
+
   import-csv)
     csv_file="${2:?Error: Specify path to CSV file}"
     echo "Importing CSV ($csv_file) into PostgreSQL ($DB_URL)..."
@@ -78,6 +93,8 @@ case "$cmd" in
     echo "  scrape-term <term>               Scrape one term (e.g. 2024-fa) to CSV"
     echo "  scrape-range <start> <end>       Scrape year range (e.g. 2020 2024) to CSV"
     echo "  scrape-all                       Scrape all past terms (2004-present) to CSV"
+    echo "  export-csv [file.csv]            Export checkpoint database to CSV"
+    echo "  export-json [file.json]          Export checkpoint database to JSON"
     echo "  import-csv <file.csv>            Import CSV into PostgreSQL database"
     echo ""
     ;;

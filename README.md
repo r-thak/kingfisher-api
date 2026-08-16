@@ -66,6 +66,9 @@ For one-time bulk archival or populating past semesters (2004–present), use th
 # Scrape a year range (e.g. 2018 to 2025)
 ./scripts/run_historical_scrape.sh scrape-range 2018 2025
 
+# Export scraped sections from SQLite checkpoint to CSV
+./scripts/run_historical_scrape.sh export-csv data/course_explorer/all_sections.csv
+
 # Import previously scraped CSV directly into PostgreSQL without network calls
 ./scripts/run_historical_scrape.sh import-csv data/course_explorer/all_historical_sections.csv
 ```
