@@ -3,3 +3,6 @@ build/
 .env
 kingfisher-web
 .DS_Store
+data/
+*.db
+*.import.sql
