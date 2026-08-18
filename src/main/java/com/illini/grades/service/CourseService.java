@@ -43,6 +43,18 @@ public class CourseService {
     @PersistenceContext
     private EntityManager em;
 
+    /**
+     * SQL expression that strips exclusion/negation clauses (e.g. "Not intended for freshmen.",
+     * "Not open to CS majors.", "Excludes online MCS students.") out of a scheduled_sections.notes
+     * value before keyword matching, so cohort/tag detection doesn't fire on the thing a section
+     * explicitly excludes. Mirrors the positive/negative segmentation done client-side in
+     * kingfisher-web's parseNotesContext().
+     */
+    private static final String CLEAN_NOTES =
+        "regexp_replace(ss.notes, '(?:not\\s+(?:intended\\s+for|open\\s+to|available\\s+to|eligible\\s+for|for)" +
+        "|excludes?|excluding|cannot\\s+be\\s+taken\\s+by|may\\s+not\\s+be\\s+taken\\s+by|no\\s+credit\\s+for" +
+        "|not\\s+for|will\\s+not\\s+allow)[^.]*\\.', '', 'gi')";
+
     public CourseService(CourseRepository courseRepository, CourseOfferingRepository courseOfferingRepository, SectionRepository sectionRepository, TermRepository termRepository, ScheduledSectionRepository scheduledSectionRepository, @Value("${app.base-url:http://localhost:8080}") String baseUrl) {
         this.courseRepository = courseRepository;
         this.courseOfferingRepository = courseOfferingRepository;
@@ -295,25 +307,25 @@ public class CourseService {
                 "    JOIN scheduled_sections ss ON ss.course_offering_id = co.id " +
                 "    WHERE ( " +
                 "        CASE tag " +
-                "            WHEN 'undergrad' THEN (filtered_c.number < 500 OR LOWER(ss.notes) LIKE '%undergrad%' OR LOWER(ss.notes) LIKE '%undergraduate%' OR UPPER(ss.section_number) LIKE '%U%' OR UPPER(ss.section_number) LIKE '%QU%' OR UPPER(ss.section_number) LIKE '%RU%' OR UPPER(ss.section_number) LIKE '%AMU%') " +
-                "            WHEN 'graduate' THEN (filtered_c.number >= 500 OR LOWER(ss.notes) LIKE '%grad%' OR LOWER(ss.notes) LIKE '%graduate%' OR UPPER(ss.section_number) LIKE '%G%' OR UPPER(ss.section_number) LIKE '%QG%' OR UPPER(ss.section_number) LIKE '%RG%' OR UPPER(ss.section_number) LIKE '%AMG%') " +
-                "            WHEN 'freshman' THEN (LOWER(ss.notes) LIKE '%first-time freshman%' OR LOWER(ss.notes) LIKE '%first time freshman%' OR LOWER(ss.notes) LIKE '%freshman%' OR LOWER(ss.notes) LIKE '%first-year%') " +
-                "            WHEN 'senior' THEN (LOWER(ss.notes) LIKE '%senior standing%' OR LOWER(ss.notes) LIKE '%senior%') " +
-                "            WHEN 'online' THEN (UPPER(ss.section_number) LIKE 'ONL%' OR LOWER(regexp_replace(ss.notes, 'not intended for[^.]*\\.', '', 'gi')) LIKE '%online%' OR EXISTS (SELECT 1 FROM scheduled_section_meetings ssm WHERE ssm.scheduled_section_id = ss.id AND UPPER(ssm.type_code) = 'ONL')) " +
-                "            WHEN 'online-mcs' THEN (LOWER(ss.notes) LIKE '%online mcs%' OR LOWER(ss.notes) LIKE '%mcs-ds%' OR LOWER(ss.notes) LIKE '%chicago mcs%' OR LOWER(ss.notes) LIKE '%master of computer science online%' OR UPPER(ss.section_number) LIKE 'DS%' OR UPPER(ss.section_number) LIKE 'MC%') " +
-                "            WHEN 'chicago-scholars' THEN (LOWER(ss.notes) LIKE '%chicago city scholars%' OR LOWER(ss.notes) LIKE '%chicago scholars%' OR UPPER(ss.section_number) = 'CSP') " +
-                "            WHEN 'online-business' THEN (LOWER(ss.notes) ~* '\\y(online msm|msm online|imba|imsm|imsa|ianalytics|gies online)\\y') " +
+                "            WHEN 'undergrad' THEN (filtered_c.number < 500 OR LOWER(" + CLEAN_NOTES + ") LIKE '%undergrad%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%undergraduate%' OR UPPER(ss.section_number) LIKE '%U%' OR UPPER(ss.section_number) LIKE '%QU%' OR UPPER(ss.section_number) LIKE '%RU%' OR UPPER(ss.section_number) LIKE '%AMU%') " +
+                "            WHEN 'graduate' THEN (filtered_c.number >= 500 OR LOWER(" + CLEAN_NOTES + ") ~* '\\ygrad(uate)?\\y' OR UPPER(ss.section_number) LIKE '%G%' OR UPPER(ss.section_number) LIKE '%QG%' OR UPPER(ss.section_number) LIKE '%RG%' OR UPPER(ss.section_number) LIKE '%AMG%') " +
+                "            WHEN 'freshman' THEN (LOWER(" + CLEAN_NOTES + ") LIKE '%first-time freshman%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%first time freshman%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%freshman%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%first-year%') " +
+                "            WHEN 'senior' THEN (LOWER(" + CLEAN_NOTES + ") LIKE '%senior standing%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%senior%') " +
+                "            WHEN 'online' THEN (UPPER(ss.section_number) LIKE 'ONL%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%online%' OR EXISTS (SELECT 1 FROM scheduled_section_meetings ssm WHERE ssm.scheduled_section_id = ss.id AND UPPER(ssm.type_code) = 'ONL')) " +
+                "            WHEN 'online-mcs' THEN (LOWER(" + CLEAN_NOTES + ") LIKE '%online mcs%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%mcs-ds%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%chicago mcs%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%master of computer science online%' OR UPPER(ss.section_number) LIKE 'DS%' OR UPPER(ss.section_number) LIKE 'MC%') " +
+                "            WHEN 'chicago-scholars' THEN (LOWER(" + CLEAN_NOTES + ") LIKE '%chicago city scholars%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%chicago scholars%' OR UPPER(ss.section_number) = 'CSP') " +
+                "            WHEN 'online-business' THEN (LOWER(" + CLEAN_NOTES + ") ~* '\\y(online msm|msm online|imba|imsm|imsa|ianalytics|gies online)\\y') " +
 
-                "            WHEN 'coursera' THEN LOWER(ss.notes) LIKE '%coursera%' " +
-                "            WHEN 'honors' THEN (LOWER(ss.notes) LIKE '%honors%' OR LOWER(ss.notes) LIKE '%james scholar%' OR LOWER(ss.notes) LIKE '%chancellor%scholar%' OR UPPER(ss.section_number) LIKE 'H%') " +
-                "            WHEN 'study-abroad' THEN (LOWER(ss.notes) LIKE '%study abroad%' OR LOWER(ss.notes) LIKE '%off-campus%' OR LOWER(ss.notes) LIKE '%off campus%') " +
-                "            WHEN 'netmath' THEN LOWER(ss.notes) LIKE '%netmath%' " +
-                "            WHEN 'majors-only' THEN (LOWER(ss.notes) LIKE '%restricted to %major%' OR LOWER(ss.notes) LIKE '%majors only%' OR LOWER(ss.notes) LIKE '%for % majors only%') " +
-                "            WHEN 'non-majors' THEN (LOWER(ss.notes) LIKE '%non-major%' OR LOWER(ss.notes) LIKE '%non major%' OR LOWER(ss.notes) LIKE '%non cs majors%' OR LOWER(ss.notes) LIKE '%for non-%') " +
-                "            WHEN 'approval-required' THEN (LOWER(ss.notes) LIKE '%consent of instructor%' OR LOWER(ss.notes) LIKE '%instructor approval%' OR LOWER(ss.notes) LIKE '%departmental approval%' OR LOWER(ss.notes) LIKE '%departmental consent%' OR LOWER(ss.notes) LIKE '%authorization required%' OR LOWER(ss.notes) LIKE '%by permit only%') " +
-                "            WHEN 'asynchronous' THEN LOWER(ss.notes) LIKE '%asynchronous%' " +
-                "            WHEN 'synchronous' THEN LOWER(ss.notes) LIKE '%synchronous%' " +
-                "            WHEN 'additional-fee' THEN (LOWER(ss.notes) LIKE '%course fee%' OR LOWER(ss.notes) LIKE '%lab fee%' OR LOWER(ss.notes) LIKE '%additional % fee%' OR LOWER(ss.notes) LIKE '%differential%') " +
+                "            WHEN 'coursera' THEN LOWER(" + CLEAN_NOTES + ") LIKE '%coursera%' " +
+                "            WHEN 'honors' THEN (LOWER(" + CLEAN_NOTES + ") LIKE '%honors%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%james scholar%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%chancellor%scholar%' OR UPPER(ss.section_number) LIKE 'H%') " +
+                "            WHEN 'study-abroad' THEN (LOWER(" + CLEAN_NOTES + ") LIKE '%study abroad%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%off-campus%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%off campus%') " +
+                "            WHEN 'netmath' THEN LOWER(" + CLEAN_NOTES + ") LIKE '%netmath%' " +
+                "            WHEN 'majors-only' THEN (LOWER(" + CLEAN_NOTES + ") LIKE '%restricted to %major%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%majors only%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%for % majors only%') " +
+                "            WHEN 'non-majors' THEN (LOWER(" + CLEAN_NOTES + ") LIKE '%non-major%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%non major%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%non cs majors%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%for non-%') " +
+                "            WHEN 'approval-required' THEN (LOWER(" + CLEAN_NOTES + ") LIKE '%consent of instructor%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%instructor approval%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%departmental approval%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%departmental consent%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%authorization required%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%by permit only%') " +
+                "            WHEN 'asynchronous' THEN LOWER(" + CLEAN_NOTES + ") ~* '\\yasynchronous\\y' " +
+                "            WHEN 'synchronous' THEN (LOWER(" + CLEAN_NOTES + ") ~* '\\ysynchronous\\y' AND LOWER(ss.notes) !~* '\\yno\\s+synchronous\\y|\\ynot\\s+synchronous\\y|synchronous\\s+attendance\\s+not\\s+required') " +
+                "            WHEN 'additional-fee' THEN (LOWER(" + CLEAN_NOTES + ") LIKE '%course fee%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%lab fee%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%additional % fee%' OR LOWER(" + CLEAN_NOTES + ") ~* '\\ydifferential\\s+(tuition|fee)') " +
                 "            ELSE FALSE " +
                 "        END " +
                 "    ) " +
@@ -532,27 +544,27 @@ public class CourseService {
         if (tag == null || tag.isBlank()) return null;
         String t = tag.trim().toLowerCase();
         return switch (t) {
-            case "undergrad", "undergrad-section" -> "(c.number < 500 OR LOWER(ss.notes) LIKE '%undergrad%' OR LOWER(ss.notes) LIKE '%undergraduate%' OR UPPER(ss.section_number) LIKE '%U%' OR UPPER(ss.section_number) LIKE '%QU%' OR UPPER(ss.section_number) LIKE '%RU%' OR UPPER(ss.section_number) LIKE '%AMU%')";
-            case "graduate", "grad", "grad-section" -> "(c.number >= 500 OR LOWER(ss.notes) LIKE '%grad%' OR LOWER(ss.notes) LIKE '%graduate%' OR UPPER(ss.section_number) LIKE '%G%' OR UPPER(ss.section_number) LIKE '%QG%' OR UPPER(ss.section_number) LIKE '%RG%' OR UPPER(ss.section_number) LIKE '%AMG%')";
-            case "online" -> "(UPPER(ss.section_number) LIKE 'ONL%' OR LOWER(regexp_replace(ss.notes, 'not intended for[^.]*\\.', '', 'gi')) LIKE '%online%' OR EXISTS (SELECT 1 FROM scheduled_section_meetings ssm WHERE ssm.scheduled_section_id = ss.id AND UPPER(ssm.type_code) = 'ONL'))";
-            case "online-mcs" -> "(LOWER(ss.notes) LIKE '%online mcs%' OR LOWER(ss.notes) LIKE '%mcs-ds%' OR LOWER(ss.notes) LIKE '%chicago mcs%' OR LOWER(ss.notes) LIKE '%master of computer science online%' OR UPPER(ss.section_number) LIKE 'DS%' OR UPPER(ss.section_number) LIKE 'MC%')";
+            case "undergrad", "undergrad-section" -> "(c.number < 500 OR LOWER(" + CLEAN_NOTES + ") LIKE '%undergrad%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%undergraduate%' OR UPPER(ss.section_number) LIKE '%U%' OR UPPER(ss.section_number) LIKE '%QU%' OR UPPER(ss.section_number) LIKE '%RU%' OR UPPER(ss.section_number) LIKE '%AMU%')";
+            case "graduate", "grad", "grad-section" -> "(c.number >= 500 OR LOWER(" + CLEAN_NOTES + ") ~* '\\ygrad(uate)?\\y' OR UPPER(ss.section_number) LIKE '%G%' OR UPPER(ss.section_number) LIKE '%QG%' OR UPPER(ss.section_number) LIKE '%RG%' OR UPPER(ss.section_number) LIKE '%AMG%')";
+            case "online" -> "(UPPER(ss.section_number) LIKE 'ONL%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%online%' OR EXISTS (SELECT 1 FROM scheduled_section_meetings ssm WHERE ssm.scheduled_section_id = ss.id AND UPPER(ssm.type_code) = 'ONL'))";
+            case "online-mcs" -> "(LOWER(" + CLEAN_NOTES + ") LIKE '%online mcs%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%mcs-ds%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%chicago mcs%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%master of computer science online%' OR UPPER(ss.section_number) LIKE 'DS%' OR UPPER(ss.section_number) LIKE 'MC%')";
 
 
-            case "chicago-scholars", "chicago-city-scholars" -> "(LOWER(ss.notes) LIKE '%chicago city scholars%' OR LOWER(ss.notes) LIKE '%chicago scholars%' OR UPPER(ss.section_number) = 'CSP')";
-            case "online-business" -> "(LOWER(ss.notes) ~* '\\y(online msm|msm online|imba|imsm|imsa|ianalytics|gies online)\\y')";
+            case "chicago-scholars", "chicago-city-scholars" -> "(LOWER(" + CLEAN_NOTES + ") LIKE '%chicago city scholars%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%chicago scholars%' OR UPPER(ss.section_number) = 'CSP')";
+            case "online-business" -> "(LOWER(" + CLEAN_NOTES + ") ~* '\\y(online msm|msm online|imba|imsm|imsa|ianalytics|gies online)\\y')";
 
-            case "coursera" -> "LOWER(ss.notes) LIKE '%coursera%'";
-            case "honors" -> "(LOWER(ss.notes) LIKE '%honors%' OR LOWER(ss.notes) LIKE '%james scholar%' OR LOWER(ss.notes) LIKE '%chancellor%scholar%' OR UPPER(ss.section_number) LIKE 'H%')";
-            case "majors-only" -> "(LOWER(ss.notes) LIKE '%restricted to %major%' OR LOWER(ss.notes) LIKE '%majors only%' OR LOWER(ss.notes) LIKE '%for % majors only%')";
-            case "non-majors" -> "(LOWER(ss.notes) LIKE '%non-major%' OR LOWER(ss.notes) LIKE '%non major%' OR LOWER(ss.notes) LIKE '%non cs majors%' OR LOWER(ss.notes) LIKE '%for non-%')";
-            case "study-abroad" -> "(LOWER(ss.notes) LIKE '%study abroad%' OR LOWER(ss.notes) LIKE '%off-campus%' OR LOWER(ss.notes) LIKE '%off campus%')";
-            case "freshman" -> "(LOWER(ss.notes) LIKE '%first-time freshman%' OR LOWER(ss.notes) LIKE '%first time freshman%' OR LOWER(ss.notes) LIKE '%freshman%' OR LOWER(ss.notes) LIKE '%first-year%')";
-            case "senior" -> "(LOWER(ss.notes) LIKE '%senior standing%' OR LOWER(ss.notes) LIKE '%senior%')";
-            case "approval-required" -> "(LOWER(ss.notes) LIKE '%consent of instructor%' OR LOWER(ss.notes) LIKE '%instructor approval%' OR LOWER(ss.notes) LIKE '%departmental approval%' OR LOWER(ss.notes) LIKE '%departmental consent%' OR LOWER(ss.notes) LIKE '%authorization required%' OR LOWER(ss.notes) LIKE '%by permit only%')";
-            case "fee", "additional-fee" -> "(LOWER(ss.notes) LIKE '%course fee%' OR LOWER(ss.notes) LIKE '%lab fee%' OR LOWER(ss.notes) LIKE '%additional % fee%' OR LOWER(ss.notes) LIKE '%differential%')";
-            case "asynchronous" -> "LOWER(ss.notes) LIKE '%asynchronous%'";
-            case "synchronous" -> "LOWER(ss.notes) LIKE '%synchronous%'";
-            case "netmath" -> "LOWER(ss.notes) LIKE '%netmath%'";
+            case "coursera" -> "LOWER(" + CLEAN_NOTES + ") LIKE '%coursera%'";
+            case "honors" -> "(LOWER(" + CLEAN_NOTES + ") LIKE '%honors%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%james scholar%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%chancellor%scholar%' OR UPPER(ss.section_number) LIKE 'H%')";
+            case "majors-only" -> "(LOWER(" + CLEAN_NOTES + ") LIKE '%restricted to %major%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%majors only%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%for % majors only%')";
+            case "non-majors" -> "(LOWER(" + CLEAN_NOTES + ") LIKE '%non-major%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%non major%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%non cs majors%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%for non-%')";
+            case "study-abroad" -> "(LOWER(" + CLEAN_NOTES + ") LIKE '%study abroad%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%off-campus%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%off campus%')";
+            case "freshman" -> "(LOWER(" + CLEAN_NOTES + ") LIKE '%first-time freshman%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%first time freshman%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%freshman%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%first-year%')";
+            case "senior" -> "(LOWER(" + CLEAN_NOTES + ") LIKE '%senior standing%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%senior%')";
+            case "approval-required" -> "(LOWER(" + CLEAN_NOTES + ") LIKE '%consent of instructor%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%instructor approval%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%departmental approval%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%departmental consent%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%authorization required%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%by permit only%')";
+            case "fee", "additional-fee" -> "(LOWER(" + CLEAN_NOTES + ") LIKE '%course fee%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%lab fee%' OR LOWER(" + CLEAN_NOTES + ") LIKE '%additional % fee%' OR LOWER(" + CLEAN_NOTES + ") ~* '\\ydifferential\\s+(tuition|fee)')";
+            case "asynchronous" -> "LOWER(" + CLEAN_NOTES + ") ~* '\\yasynchronous\\y'";
+            case "synchronous" -> "(LOWER(" + CLEAN_NOTES + ") ~* '\\ysynchronous\\y' AND LOWER(ss.notes) !~* '\\yno\\s+synchronous\\y|\\ynot\\s+synchronous\\y|synchronous\\s+attendance\\s+not\\s+required')";
+            case "netmath" -> "LOWER(" + CLEAN_NOTES + ") LIKE '%netmath%'";
             default -> null;
         };
     }
