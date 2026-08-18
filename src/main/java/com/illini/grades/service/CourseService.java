@@ -299,7 +299,7 @@ public class CourseService {
                 "            WHEN 'graduate' THEN (filtered_c.number >= 500 OR LOWER(ss.notes) LIKE '%grad%' OR LOWER(ss.notes) LIKE '%graduate%' OR UPPER(ss.section_number) LIKE '%G%' OR UPPER(ss.section_number) LIKE '%QG%' OR UPPER(ss.section_number) LIKE '%RG%' OR UPPER(ss.section_number) LIKE '%AMG%') " +
                 "            WHEN 'freshman' THEN (LOWER(ss.notes) LIKE '%first-time freshman%' OR LOWER(ss.notes) LIKE '%first time freshman%' OR LOWER(ss.notes) LIKE '%freshman%' OR LOWER(ss.notes) LIKE '%first-year%') " +
                 "            WHEN 'senior' THEN (LOWER(ss.notes) LIKE '%senior standing%' OR LOWER(ss.notes) LIKE '%senior%') " +
-                "            WHEN 'online' THEN (UPPER(ss.section_number) LIKE 'ONL%' OR LOWER(ss.notes) LIKE '%online%' OR EXISTS (SELECT 1 FROM scheduled_section_meetings ssm WHERE ssm.scheduled_section_id = ss.id AND UPPER(ssm.type_code) = 'ONL')) " +
+                "            WHEN 'online' THEN (UPPER(ss.section_number) LIKE 'ONL%' OR LOWER(regexp_replace(ss.notes, 'not intended for[^.]*\\.', '', 'gi')) LIKE '%online%' OR EXISTS (SELECT 1 FROM scheduled_section_meetings ssm WHERE ssm.scheduled_section_id = ss.id AND UPPER(ssm.type_code) = 'ONL')) " +
                 "            WHEN 'online-mcs' THEN (LOWER(ss.notes) LIKE '%online mcs%' OR LOWER(ss.notes) LIKE '%mcs-ds%' OR LOWER(ss.notes) LIKE '%chicago mcs%' OR LOWER(ss.notes) LIKE '%master of computer science online%' OR UPPER(ss.section_number) LIKE 'DS%' OR UPPER(ss.section_number) LIKE 'MC%') " +
                 "            WHEN 'chicago-scholars' THEN (LOWER(ss.notes) LIKE '%chicago city scholars%' OR LOWER(ss.notes) LIKE '%chicago scholars%' OR UPPER(ss.section_number) = 'CSP') " +
                 "            WHEN 'online-business' THEN (LOWER(ss.notes) ~* '\\y(online msm|msm online|imba|imsm|imsa|ianalytics|gies online)\\y') " +
@@ -534,7 +534,7 @@ public class CourseService {
         return switch (t) {
             case "undergrad", "undergrad-section" -> "(c.number < 500 OR LOWER(ss.notes) LIKE '%undergrad%' OR LOWER(ss.notes) LIKE '%undergraduate%' OR UPPER(ss.section_number) LIKE '%U%' OR UPPER(ss.section_number) LIKE '%QU%' OR UPPER(ss.section_number) LIKE '%RU%' OR UPPER(ss.section_number) LIKE '%AMU%')";
             case "graduate", "grad", "grad-section" -> "(c.number >= 500 OR LOWER(ss.notes) LIKE '%grad%' OR LOWER(ss.notes) LIKE '%graduate%' OR UPPER(ss.section_number) LIKE '%G%' OR UPPER(ss.section_number) LIKE '%QG%' OR UPPER(ss.section_number) LIKE '%RG%' OR UPPER(ss.section_number) LIKE '%AMG%')";
-            case "online" -> "(UPPER(ss.section_number) LIKE 'ONL%' OR LOWER(ss.notes) LIKE '%online%' OR EXISTS (SELECT 1 FROM scheduled_section_meetings ssm WHERE ssm.scheduled_section_id = ss.id AND UPPER(ssm.type_code) = 'ONL') OR EXISTS (SELECT 1 FROM sections sec WHERE sec.course_offering_id = co.id AND UPPER(sec.sched_type) = 'ONL'))";
+            case "online" -> "(UPPER(ss.section_number) LIKE 'ONL%' OR LOWER(regexp_replace(ss.notes, 'not intended for[^.]*\\.', '', 'gi')) LIKE '%online%' OR EXISTS (SELECT 1 FROM scheduled_section_meetings ssm WHERE ssm.scheduled_section_id = ss.id AND UPPER(ssm.type_code) = 'ONL'))";
             case "online-mcs" -> "(LOWER(ss.notes) LIKE '%online mcs%' OR LOWER(ss.notes) LIKE '%mcs-ds%' OR LOWER(ss.notes) LIKE '%chicago mcs%' OR LOWER(ss.notes) LIKE '%master of computer science online%' OR UPPER(ss.section_number) LIKE 'DS%' OR UPPER(ss.section_number) LIKE 'MC%')";
 
 
