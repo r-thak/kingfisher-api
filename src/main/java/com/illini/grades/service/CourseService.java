@@ -49,11 +49,19 @@ public class CourseService {
      * value before keyword matching, so cohort/tag detection doesn't fire on the thing a section
      * explicitly excludes. Mirrors the positive/negative segmentation done client-side in
      * kingfisher-web's parseNotesContext().
+     *
+     * The trigger phrases are wrapped in \y word boundaries so e.g. "excludes?" can't partial-match
+     * inside "excluded" (that silently ate the rest of unrelated sentences, like course descriptions
+     * mentioning "historically excluded composers"). The trailing group also strips any number of
+     * directly-following sentences that repeat the just-excluded phrase as their subject (backreference
+     * \1), which covers the common registrar pattern "Not intended for James Scholars. James Scholars
+     * should file an HCLA ... James Scholars should register for discussion section ..." -- without it,
+     * those follow-up sentences re-introduce the excluded keyword and undo the strip.
      */
     private static final String CLEAN_NOTES =
-        "regexp_replace(ss.notes, '(?:not\\s+(?:intended\\s+for|open\\s+to|available\\s+to|eligible\\s+for|for)" +
+        "regexp_replace(ss.notes, '\\y(?:not\\s+(?:intended\\s+for|open\\s+to|available\\s+to|eligible\\s+for|for)" +
         "|excludes?|excluding|cannot\\s+be\\s+taken\\s+by|may\\s+not\\s+be\\s+taken\\s+by|no\\s+credit\\s+for" +
-        "|not\\s+for|will\\s+not\\s+allow)[^.]*\\.', '', 'gi')";
+        "|not\\s+for|will\\s+not\\s+allow)\\y\\s+([^.]*)\\.(?:\\s*\\1\\M[^.]*\\.)*', '', 'gi')";
 
     public CourseService(CourseRepository courseRepository, CourseOfferingRepository courseOfferingRepository, SectionRepository sectionRepository, TermRepository termRepository, ScheduledSectionRepository scheduledSectionRepository, @Value("${app.base-url:http://localhost:8080}") String baseUrl) {
         this.courseRepository = courseRepository;
